@@ -1,4 +1,18 @@
 (function() {
+  // Exit if the main Ecwid object isn't ready.
+  if (typeof window.Ecwid === 'undefined' || typeof window.Ecwid.getStoreId !== 'function') {
+    return;
+  }
+
+  // Dynamically get the store ID from the Ecwid object.
+  const storeId = window.Ecwid.getStoreId();
+  if (!storeId) {
+    return;
+  }
+
+  // Construct the session cookie name dynamically.
+  const LOGIN_COOKIE_NAME = `ec-${storeId}-session`;
+
   /**
    * Checks if a cookie with the given name exists.
    * @param {string} cookieName The name of the cookie to check for.
@@ -7,19 +21,15 @@
   function hasLoginCookie(cookieName) {
     return document.cookie.split(';').some(item => item.trim().startsWith(cookieName + '='));
   }
-
-  // Using the cookie name identified from your screenshot.
-  const LOGIN_COOKIE_NAME = 'ec-121845055-session'; 
   
   // If the user is a guest (not logged in), hide prices and buy buttons.
   if (!hasLoginCookie(LOGIN_COOKIE_NAME)) {
     
-    // Ensure the Ecwid.config object exists before we try to modify it.
-    window.Ecwid = window.Ecwid || {};
-    Ecwid.config = Ecwid.config || {};
-    Ecwid.config.design = Ecwid.config.design || {};
+    // Ensure the config objects exist before we try to modify them.
+    window.Ecwid.config = window.Ecwid.config || {};
+    window.Ecwid.config.design = window.Ecwid.config.design || {};
 
-    console.log("Guest user detected. Hiding prices via Ecwid.config.");
+    console.log(`Guest on store ${storeId}. Hiding prices via Ecwid.config.`);
 
     // Hide prices on product list/category pages
     Ecwid.config.design.product_list_price_behavior = "HIDE";
