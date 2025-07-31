@@ -1,46 +1,37 @@
-(function() {
-  // Exit if the main Ecwid object isn't ready.
-  if (typeof window.Ecwid === 'undefined' || typeof window.Ecwid.getStoreId !== 'function') {
-    return;
-  }
+// This script is designed to run in a Lightspeed eCom Custom App.
+// It assumes that product prices are turned OFF by default in the store's design settings.
+// Its purpose is to turn prices ON only for customers who are logged in.
 
-  // Dynamically get the store ID from the Ecwid object.
-  const storeId = window.Ecwid.getStoreId();
-  if (!storeId) {
-    return;
-  }
+Ecwid.OnAPILoaded.add(function() {
+  console.log("Wholesale App Loaded: Checking login status to potentially show prices.");
 
-  // Construct the session cookie name dynamically.
-  const LOGIN_COOKIE_NAME = `ec-${storeId}-session`;
-
-  /**
-   * Checks if a cookie with the given name exists.
-   * @param {string} cookieName The name of the cookie to check for.
-   * @returns {boolean} True if the cookie exists, false otherwise.
-   */
-  function hasLoginCookie(cookieName) {
-    return document.cookie.split(';').some(item => item.trim().startsWith(cookieName + '='));
-  }
-  
-  // If the user is a guest (not logged in), hide prices and buy buttons.
-  if (!hasLoginCookie(LOGIN_COOKIE_NAME)) {
+  // Check if the customer is logged into their account.
+  if (Ecwid.isLoggedIn()) {
     
-    // Ensure the config objects exist before we try to modify them.
+    console.log("Logged-in user detected. Forcing prices and buy buttons to be visible.");
+
+    // Ensure the config objects exist before we modify them.
     window.Ecwid.config = window.Ecwid.config || {};
     window.Ecwid.config.design = window.Ecwid.config.design || {};
 
-    console.log(`Guest on store ${storeId}. Hiding prices via Ecwid.config.`);
-
-    // Hide prices on product list/category pages
-    Ecwid.config.design.product_list_price_behavior = "HIDE";
+    // --- Configuration to SHOW prices and buttons ---
     
-    // Hide "Buy Now" buttons on product list/category pages
-    Ecwid.config.design.product_list_buybutton_behavior = "HIDE";
-
-    // Hide prices on the product details pages
-    Ecwid.config.design.product_details_show_product_price = false;
+    // Show prices on product list/category pages
+    Ecwid.config.design.product_list_price_behavior = "SHOW";
     
-    // Hide "Add to Bag" button on the product details pages
-    Ecwid.config.design.product_details_show_buy_button = false;
+    // Show "Buy Now" buttons on product list/category pages
+    Ecwid.config.design.product_list_buybutton_behavior = "SHOW";
+
+    // Show prices on the product details pages
+    Ecwid.config.design.product_details_show_product_price = true;
+    
+    // Show "Add to Bag" button on the product details pages
+    Ecwid.config.design.product_details_show_buy_button = true;
+
+    // This critical function tells the storefront to apply the new configuration
+    // and re-render the product widgets.
+    Ecwid.refreshConfig();
+  } else {
+    console.log("Guest user detected. Prices will remain hidden by default.");
   }
-})();
+});
