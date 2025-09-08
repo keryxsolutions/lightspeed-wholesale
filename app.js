@@ -4,62 +4,105 @@
 
 Ecwid.OnAPILoaded.add(function () {
   console.log(
-    "Wholesale App Loaded: Checking login status to manage price visibility."
+    "Wholesale App Loaded: Initializing price visibility and category banner."
   );
 
-  // Initialize category banner functionality
+  // Initialize robust wholesale price visibility logic
+  initializeWholesalePriceVisibility();
+
+  // Initialize category banner functionality (preserved)
   initializeCategoryBanner();
-
-  // Check if the customer is logged into their account.
-  if (Ecwid.isLoggedIn()) {
-    console.log(
-      "Logged-in user detected. Forcing prices and buy buttons to be visible."
-    );
-
-    // This is the logic for your approved, logged-in wholesalers.
-    // It turns the prices and buttons back ON.
-    window.Ecwid.config = window.Ecwid.config || {};
-    window.Ecwid.config.design = window.Ecwid.config.design || {};
-
-    Ecwid.config.design.product_list_price_behavior = "SHOW";
-    Ecwid.config.design.product_list_buybutton_behavior = "SHOW";
-    Ecwid.config.design.product_details_show_product_price = true;
-    Ecwid.config.design.product_details_show_buy_button = true;
-
-    // Apply the new configuration to the storefront.
-    Ecwid.refreshConfig();
-  } else {
-    console.log(
-      "Guest user detected. Setting config to HIDE and injecting CSS safety net."
-    );
-
-    // This is the new, more robust logic for non-logged-in users.
-    window.Ecwid.config = window.Ecwid.config || {};
-    window.Ecwid.config.design = window.Ecwid.config.design || {};
-
-    // 1. Explicitly set the configuration to HIDE.
-    // This ensures the application's internal state is correct.
-    Ecwid.config.design.product_list_price_behavior = "HIDE";
-    Ecwid.config.design.product_list_buybutton_behavior = "HIDE";
-    Ecwid.config.design.product_details_show_product_price = false;
-    Ecwid.config.design.product_details_show_buy_button = false;
-
-    // 2. Inject a CSS "safety net" to visually hide any dynamically loaded elements.
-    const styles = `
-        .ecwid-productBrowser-price,
-        .ecwid-price-value,
-        .ecwid-btn--add-to-cart,
-        .ecwid-add-to-cart-button-container,
-        .product-card-buy-icon {
-          display: none !important;
-        }
-      `;
-
-    const styleSheet = document.createElement("style");
-    styleSheet.innerText = styles;
-    document.head.appendChild(styleSheet);
-  }
 });
+
+/*****************************************************************************/
+
+function initializeWholesalePriceVisibility() {
+  // Helper: inject CSS to hide prices, buy buttons, and price filter widget
+  function injectWholesaleHidingCSS() {
+    if (document.getElementById('wholesale-hide-css')) return;
+    const style = document.createElement('style');
+    style.id = 'wholesale-hide-css';
+    style.innerText = `
+      /* Hide product prices, buy buttons, and price filter for guests */
+      .ecwid-productBrowser-price,
+      .ecwid-price-value,
+      .ecwid-btn--add-to-cart,
+      .ecwid-add-to-cart-button-container,
+      .product-card-buy-icon,
+      .ec-filter__item--price,
+      .ec-price-filter,
+      .ec-filter__item[data-filter="price"],
+      .ec-filter__item--price-range,
+      .ec-filter__item--price-slider,
+      .ec-filter__item--price input,
+      .ec-filter__item--price label,
+      .ec-filter__item--price .ec-filter__item-content,
+      .ec-filter__item--price .ec-filter__item-title {
+        display: none !important;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // Helper: remove injected CSS
+  function removeWholesaleHidingCSS() {
+    const style = document.getElementById('wholesale-hide-css');
+    if (style) style.remove();
+  }
+
+  // Helper: set price/button visibility using ec.storefront.config
+  function setWholesaleConfig(show) {
+    window.ec = window.ec || {};
+    window.ec.storefront = window.ec.storefront || {};
+    window.ec.storefront.config = window.ec.storefront.config || {};
+    const config = window.ec.storefront.config;
+    config.product_list_price_behavior = show ? "SHOW" : "HIDE";
+    config.product_list_buybutton_behavior = show ? "SHOW" : "HIDE";
+    config.product_details_show_product_price = !!show;
+    config.product_details_show_buy_button = !!show;
+    if (typeof Ecwid.refreshConfig === "function") Ecwid.refreshConfig();
+  }
+
+  // Poll for Ecwid.Customer API readiness
+  function pollForCustomerAPI(callback, maxAttempts = 30, interval = 200) {
+    let attempts = 0;
+    function tryGet() {
+      if (Ecwid.Customer && typeof Ecwid.Customer.get === "function") {
+        callback();
+      } else if (attempts < maxAttempts) {
+        attempts++;
+        setTimeout(tryGet, interval);
+      } else {
+        console.warn("Wholesale: Ecwid.Customer API not available after polling.");
+      }
+    }
+    tryGet();
+  }
+
+  // Main logic: check login and set visibility
+  function updateWholesaleVisibility() {
+    Ecwid.Customer.get(function(customer) {
+      const isLoggedIn = customer && customer.email;
+      if (isLoggedIn) {
+        setWholesaleConfig(true);
+        removeWholesaleHidingCSS();
+        console.log("Wholesale: Logged-in user, showing prices and buy buttons.");
+      } else {
+        setWholesaleConfig(false);
+        injectWholesaleHidingCSS();
+        console.log("Wholesale: Guest user, hiding prices, buy buttons, and price filter.");
+      }
+    });
+  }
+
+  // Initial run after API is ready
+  pollForCustomerAPI(updateWholesaleVisibility);
+
+  // Re-run on SPA navigation/page changes
+  Ecwid.OnPageLoaded.add(function() {
+    pollForCustomerAPI(updateWholesaleVisibility);
+  });
+}
 
 /*****************************************************************************/
 
