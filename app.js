@@ -208,7 +208,7 @@ function fetchAndCreateCategoryBanner_Prod(categoryId) {
         return;
       }
       // Create or update the banner
-      createApiCategoryBanner(parentContainer, overlay, imageUrl);
+      createApiCategoryBanner(parentContainer, descContainer, imageUrl);
 
       // Move .grid__description to .ecwid-productBrowser-head
       parentContainer.appendChild(descContainer);
@@ -247,15 +247,8 @@ function createApiCategoryBanner(descContainer, overlay, imageUrl) {
   descContainer.insertBefore(img, descContainer.firstChild);
 
   // Add overlay classes (use minimal class for new CSS)
-  overlay.classList.add("working-banner-overlay", "category-banner-text");
+  overlay.classList.add("category-banner-text");
   overlay.style = "";
-
-  // Hide any other siblings except the overlay and image
-  Array.from(descContainer.children).forEach((child) => {
-    if (child !== img && child !== overlay) {
-      child.style.display = "none";
-    }
-  });
 
   // Log success
   console.log("Category Banner: Banner created with API image:", imageUrl);
