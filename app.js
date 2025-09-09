@@ -235,10 +235,14 @@ function fetchAndCreateCategoryBanner_Prod(categoryId) {
   const storeId = "121843055";
   const publicToken = "public_nupsXaESCGidBYB7gUDny23ahRgXR5Yp";
 
-  const apiUrl = `https://app.ecwid.com/api/v3/${storeId}/categories/${categoryId}?token=${publicToken}`;
+  const apiUrl = `https://app.ecwid.com/api/v3/${storeId}/categories/${categoryId}`;
   console.log('Category Banner: Fetching category data from API:', apiUrl);
 
-  fetch(apiUrl)
+  fetch(apiUrl, {
+    headers: {
+      'Authorization': `Bearer ${publicToken}`
+    }
+  })
     .then(resp => resp.json())
     .then(data => {
       if (!data || (!data.imageUrl && !data.originalImageUrl)) {
@@ -303,16 +307,16 @@ function createApiCategoryBanner(descContainer, overlay, imageUrl) {
 }
 
 function injectCategoryBannerStyles() {
-  // Only load local app.css for category banner styles
-  if (!document.querySelector('link[href="./app.css"]')) {
+  // Only load external app.css for category banner styles
+  if (!document.querySelector('link[href="https://keryxsolutions.github.io/lightspeed-wholesale/app.css"]')) {
     const localCssLink = document.createElement('link');
     localCssLink.rel = 'stylesheet';
-    localCssLink.href = './app.css';
+    localCssLink.href = 'https://keryxsolutions.github.io/lightspeed-wholesale/app.css';
     localCssLink.onload = function() {
-      console.log('Category Banner: Local app.css loaded successfully');
+      console.log('Category Banner: External app.css loaded successfully');
     };
     localCssLink.onerror = function() {
-      console.warn('Category Banner: Failed to load local app.css');
+      console.warn('Category Banner: Failed to load external app.css');
     };
     document.head.appendChild(localCssLink);
   }
