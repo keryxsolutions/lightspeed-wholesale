@@ -1,26 +1,28 @@
 /* Lightspeed eCom Custom App CSS - Wholesale Portal */
 
 /* Category Banner Styles */
-.category-banner {
+.ecwid .category-banner {
   --category-banner-margin: calc(
     (100vw - var(--global-tile-max-width) * 1px) / 2
   );
 
   display: block;
   position: relative;
-  width: 100%;
+  width: 100vw;
   height: 280px;
   margin-right: calc(var(--category-banner-margin) * -1);
   margin-left: calc(var(--category-banner-margin) * -1);
+  margin-top: calc(var(--computed-tile-margin) * -1);
+  margin-bottom: calc(var(--computed-tile-margin) / 2);
 }
 
-.category-banner img {
+.ecwid .category-banner img {
   display: block;
   width: 100%;
   height: auto;
 }
 
-.category-banner-text {
+.ecwid .category-banner-text {
   align-items: center;
   color: white;
   display: flex;
@@ -40,27 +42,27 @@
   width: 100%;
 }
 
-.category-banner-text > p {
+.ecwid .category-banner-text > p {
   width: 100%;
 }
 
 /* Mobile and Tablet Responsive Design */
 @media (max-width: 768px) {
-  .category-banner {
+  .ecwid .category-banner {
     height: 250px;
   }
 
-  .category-banner-text {
+  .ecwid .category-banner-text {
     font-size: 20px;
   }
 }
 
 @media (max-width: 480px) {
-  .category-banner {
+  .ecwid .category-banner {
     height: 200px;
   }
 
-  .category-banner-text {
+  .ecwid .category-banner-text {
     font-size: 18px;
   }
 }
