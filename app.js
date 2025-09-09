@@ -209,9 +209,6 @@ function fetchAndCreateCategoryBanner_Prod(categoryId) {
       }
       // Create or update the banner
       createApiCategoryBanner(parentContainer, descContainer, imageUrl);
-
-      // Move .grid__description to .ecwid-productBrowser-head
-      parentContainer.appendChild(descContainer);
     })
     .catch((err) => {
       console.error(
@@ -243,8 +240,14 @@ function createApiCategoryBanner(descContainer, overlay, imageUrl) {
   img.style.objectPosition = "center";
   img.style.display = "block";
 
+  // Create wrapper for image and overlay
+  const wrapper = document.createElement("div");
+  wrapper.classList.add("category-banner");
+
   // Insert image as first child of banner container
-  descContainer.insertBefore(img, descContainer.firstChild);
+  wrapper.appendChild(img);
+  wrapper.appendChild(overlay);
+  descContainer.insertBefore(wrapper, descContainer.firstChild);
 
   // Add overlay classes (use minimal class for new CSS)
   overlay.classList.add("category-banner-text");

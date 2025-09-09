@@ -1,47 +1,43 @@
 /* Lightspeed eCom Custom App CSS - Wholesale Portal */
 
 /* Category Banner Styles */
-.category-banner-container {
+.category-banner {
+  --category-banner-margin: calc(
+    (100vw - var(--global-tile-max-width) * 1px) / 2
+  );
+
   display: block;
   position: relative;
   width: 100%;
-  height: auto;
-  margin: 0 auto;
+  height: 280px;
+  margin-right: calc(var(--category-banner-margin) * -1);
+  margin-left: calc(var(--category-banner-margin) * -1);
 }
 
-.category-banner-container img {
+.category-banner img {
   display: block;
   width: 100%;
   height: auto;
 }
 
-.category-banner-overlay {
+.category-banner-text {
+  align-items: center;
+  color: white;
+  display: flex;
+  font-family: var(--title-font-family), system-ui, Segoe UI, Roboto, Arial,
+    sans-serif;
+  font-size: 32px;
+  font-weight: var(--title-font-weight);
+  height: 100%;
+  left: 0;
+  line-height: 1.4;
+  margin: 0 auto;
+  max-width: calc(var(--global-tile-max-width) * 1px);
+  min-height: 50px;
+  padding: 0 var(--category-banner-margin);
   position: absolute;
   top: 0;
-  left: 0;
   width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  background-color: rgba(0, 0, 0, 0.3);
-  border-radius: 10px;
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
-  padding: 30px;
-}
-
-.category-banner-text {
-  font-family: "Roboto", sans-serif;
-  font-size: 24px;
-  font-weight: 400;
-  color: white;
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
-  margin: 0;
-  padding: 0;
-  line-height: 1.4;
-  min-height: 50px;
 }
 
 .category-banner-text > p {
@@ -50,7 +46,7 @@
 
 /* Mobile and Tablet Responsive Design */
 @media (max-width: 768px) {
-  .category-banner-container {
+  .category-banner {
     height: 250px;
   }
 
@@ -60,7 +56,7 @@
 }
 
 @media (max-width: 480px) {
-  .category-banner-container {
+  .category-banner {
     height: 200px;
   }
 
