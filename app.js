@@ -1,6 +1,7 @@
-// This script is designed to run in a Lightspeed eCom Custom App.
-// It assumes that product prices are turned OFF by default in the store's design settings.
-// Added category banner functionality for full-width banners with text overlay.
+/* Lightspeed eCom Custom App JS - Wholesale Portal */
+
+/* This script assumes that product prices are turned OFF by default in the store's design settings. */
+/* Added category banner functionality for full-width banners with text overlay. */
 
 Ecwid.OnAPILoaded.add(function () {
   console.log(
@@ -183,312 +184,148 @@ function runApiOrderSyncTest() {
 /*****************************************************************************/
 
 function initializeCategoryBanner() {
-  console.log('Category Banner: Initializing banner functionality');
-  
+  console.log('Category Banner: Initializing production banner functionality (API-based, secure token)');
+
   // Inject CSS styles for category banner
   injectCategoryBannerStyles();
-  
-  // Watch for page changes to apply banner to dynamically loaded content
+
+  // Listen for category page loads
   Ecwid.OnPageLoaded.add(function(page) {
-    console.log('Category Banner: Page loaded', page.type);
-    if (page.type === 'CATEGORY') {
+    if (page.type === 'CATEGORY' && page.categoryId) {
+      console.log('Category Banner: Detected category page, ID:', page.categoryId);
       setTimeout(function() {
-        checkAndCreateBanner();
-      }, 500);
-      
+        fetchAndCreateCategoryBanner_Prod(page.categoryId);
+      }, 400);
+
       // Additional check after a longer delay for slow loading
       setTimeout(function() {
-        checkAndCreateBanner();
-      }, 2000);
+        fetchAndCreateCategoryBanner_Prod(page.categoryId);
+      }, 1800);
     }
   });
-  
-  // Use MutationObserver to watch for dynamically loaded content
-  const observer = new MutationObserver(function(mutations) {
-    let shouldCheck = false;
-    mutations.forEach(function(mutation) {
-      if (mutation.addedNodes.length) {
-        mutation.addedNodes.forEach(function(node) {
-          if (node.nodeType === 1) { // Element node
-            if (node.querySelector && (
-              node.querySelector('.ecwid-category-image, .ec-category-image, .category-image') ||
-              node.querySelector('.ecwid-category-description, .ec-category-description, .category-description') ||
-              node.classList.contains('ecwid-category-image') ||
-              node.classList.contains('ec-category-image') ||
-              node.classList.contains('ecwid-category-description') ||
-              node.classList.contains('ec-category-description')
-            )) {
-              shouldCheck = true;
-            }
-          }
-        });
-      }
-    });
-    
-    if (shouldCheck) {
-      setTimeout(checkAndCreateBanner, 300);
+
+  // Initial check in case DOM is ready before Ecwid SPA event
+  setTimeout(function() {
+    const page = window.Ecwid && Ecwid.getLastLoadedPage && Ecwid.getLastLoadedPage();
+    if (page && page.type === 'CATEGORY' && page.categoryId) {
+      fetchAndCreateCategoryBanner_Prod(page.categoryId);
     }
-  });
-  
-  // Start observing once DOM is ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() {
-      observer.observe(document.body, {
-        childList: true,
-        subtree: true
-      });
-    });
-  } else {
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
+  }, 800);
+}
+
+// Fetch category data from Ecwid API and create banner (production version)
+function fetchAndCreateCategoryBanner_Prod(categoryId) {
+  // Find the description container and overlay
+  const descContainer = document.querySelector('.grid__description');
+  if (!descContainer) {
+    console.log('Category Banner: No .grid__description found, aborting banner creation.');
+    return;
   }
-  
-  // Initial checks at different intervals
-  setTimeout(checkAndCreateBanner, 500);
-  setTimeout(checkAndCreateBanner, 1500);
-  setTimeout(checkAndCreateBanner, 3000);
+  if (descContainer.classList.contains('category-banner-container')) {
+    console.log('Category Banner: Banner already exists for this category.');
+    return;
+  }
+  const overlay = descContainer.querySelector('.grid__description-inner');
+  if (!overlay) {
+    console.log('Category Banner: No .grid__description-inner found inside .grid__description.');
+    return;
+  }
+
+  // Use hardcoded store ID and public token for secure API access
+  const storeId = "121843055";
+  const publicToken = "public_nupsXaESCGidBYB7gUDny23ahRgXR5Yp";
+
+  const apiUrl = `https://app.ecwid.com/api/v3/${storeId}/categories/${categoryId}?token=${publicToken}`;
+  console.log('Category Banner: Fetching category data from API:', apiUrl);
+
+  fetch(apiUrl)
+    .then(resp => resp.json())
+    .then(data => {
+      if (!data || (!data.imageUrl && !data.originalImageUrl)) {
+        console.warn('Category Banner: No image found in API response for category', categoryId, data);
+        return;
+      }
+      // Prefer imageUrl, fallback to originalImageUrl
+      const imageUrl = data.imageUrl || data.originalImageUrl;
+      if (!imageUrl) {
+        console.warn('Category Banner: No usable image URL in API response for category', categoryId);
+        return;
+      }
+      // Create or update the banner
+      createApiCategoryBanner(descContainer, overlay, imageUrl);
+    })
+    .catch(err => {
+      console.error('Category Banner: Failed to fetch category data from API.', err);
+    });
+}
+
+// Build the banner using the fetched image and description overlay
+function createApiCategoryBanner(descContainer, overlay, imageUrl) {
+  // Add banner container class
+  descContainer.classList.add('working-banner-container');
+
+  // Remove any previous banner images
+  const oldBannerImg = descContainer.querySelector('.category-banner-img-from-api');
+  if (oldBannerImg) oldBannerImg.remove();
+
+  // Create the image element
+  const img = document.createElement('img');
+  img.src = imageUrl;
+  img.alt = 'Category Banner';
+  img.className = 'category-banner-img-from-api';
+  img.style.width = '100%';
+  img.style.height = '100%';
+  img.style.objectFit = 'cover';
+  img.style.objectPosition = 'center';
+  img.style.display = 'block';
+
+  // Insert image as first child of banner container
+  descContainer.insertBefore(img, descContainer.firstChild);
+
+  // Add overlay classes (use minimal class for new CSS)
+  overlay.classList.add('working-banner-overlay', 'category-banner-text');
+  overlay.style = '';
+
+  // Hide any other siblings except the overlay and image
+  Array.from(descContainer.children).forEach(child => {
+    if (child !== img && child !== overlay) {
+      child.style.display = 'none';
+    }
+  });
+
+  // Log success
+  console.log('Category Banner: Banner created with API image:', imageUrl);
+
+  // Force reflow
+  setTimeout(function() {
+    descContainer.offsetHeight;
+  }, 100);
 }
 
 function injectCategoryBannerStyles() {
-  // Check if external CSS is already loaded
-  const externalCssUrl = 'https://keryxsolutions.github.io/lightspeed-wholesale/app.css';
-  const cssAlreadyLoaded = document.querySelector(`link[href="${externalCssUrl}"]`);
-  
-  if (!cssAlreadyLoaded) {
-    // Try to load external CSS first
-    const externalCssLink = document.createElement('link');
-    externalCssLink.rel = 'stylesheet';
-    externalCssLink.href = externalCssUrl;
-    externalCssLink.onload = function() {
-      console.log('Category Banner: External CSS loaded successfully');
+  // Only load local app.css for category banner styles
+  if (!document.querySelector('link[href="./app.css"]')) {
+    const localCssLink = document.createElement('link');
+    localCssLink.rel = 'stylesheet';
+    localCssLink.href = './app.css';
+    localCssLink.onload = function() {
+      console.log('Category Banner: Local app.css loaded successfully');
     };
-    externalCssLink.onerror = function() {
-      console.log('Category Banner: External CSS failed to load, using inline styles');
-      loadInlineStyles();
+    localCssLink.onerror = function() {
+      console.warn('Category Banner: Failed to load local app.css');
     };
-    document.head.appendChild(externalCssLink);
+    document.head.appendChild(localCssLink);
   }
-  
-  // Load Google Fonts
+
+  // Load Google Fonts if not already present
   if (!document.querySelector('link[href*="Cormorant+Garamond"]')) {
     const link = document.createElement('link');
     link.href = 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap';
     link.rel = 'stylesheet';
     document.head.appendChild(link);
   }
-  
-  function loadInlineStyles() {
-    const styles = `
-      /* Category Banner with Text Overlay - Inline Fallback */
-      .ecwid-category-title, .ec-page-title, .ec-category-title {
-        display: none !important;
-      }
-      
-      .category-banner-container {
-        position: relative;
-        width: 100vw;
-        margin-left: 50%;
-        transform: translateX(-50%);
-        height: 400px;
-        overflow: hidden;
-        margin-bottom: 2rem;
-        z-index: 1;
-      }
-      
-      .category-banner-container .ecwid-category-image img,
-      .category-banner-container .ec-category-image img,
-      .category-banner-container img {
-        width: 100% !important;
-        height: 400px !important;
-        object-fit: cover !important;
-        object-position: center !important;
-        display: block !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        border: none !important;
-      }
-      
-      .category-banner-overlay {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        z-index: 10;
-        text-align: center;
-        max-width: 80%;
-        padding: 30px;
-        background: rgba(0, 0, 0, 0.3);
-        border-radius: 10px;
-        backdrop-filter: blur(2px);
-        -webkit-backdrop-filter: blur(2px);
-      }
-      
-      .category-banner-text {
-        font-family: "Cormorant Garamond", system-ui, "Segoe UI", Roboto, Arial, sans-serif !important;
-        font-size: 32px !important;
-        font-weight: 400 !important;
-        color: white !important;
-        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
-        margin: 0 !important;
-        padding: 0 !important;
-        line-height: 1.4 !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        min-height: 50px;
-        text-align: center !important;
-      }
-      
-      .category-banner-text strong {
-        font-weight: bold !important;
-        font-family: inherit !important;
-      }
-      
-      .category-banner-text em {
-        font-style: italic !important;
-        font-family: inherit !important;
-      }
-      
-      .category-banner-text p {
-        margin: 0 !important;
-        padding: 0 !important;
-        font-family: inherit !important;
-        font-size: inherit !important;
-        color: inherit !important;
-        line-height: inherit !important;
-      }
-      
-      body .category-banner-text,
-      .ec-wrapper .category-banner-text,
-      .ecwid .category-banner-text {
-        font-family: "Cormorant Garamond", system-ui, "Segoe UI", Roboto, Arial, sans-serif !important;
-        font-size: 32px !important;
-        color: white !important;
-      }
-      
-      @media (max-width: 1024px) {
-        .category-banner-container {
-          height: 350px;
-        }
-        .category-banner-container .ecwid-category-image img,
-        .category-banner-container .ec-category-image img,
-        .category-banner-container img {
-          height: 350px !important;
-        }
-        .category-banner-text {
-          font-size: 28px !important;
-        }
-        .category-banner-overlay {
-          max-width: 85%;
-          padding: 25px;
-        }
-      }
-      
-      @media (max-width: 768px) {
-        .category-banner-container {
-          height: 250px;
-          margin-bottom: 1.5rem;
-        }
-        .category-banner-container .ecwid-category-image img,
-        .category-banner-container .ec-category-image img,
-        .category-banner-container img {
-          height: 250px !important;
-        }
-        .category-banner-text {
-          font-size: 24px !important;
-        }
-        .category-banner-overlay {
-          max-width: 90%;
-          padding: 20px;
-        }
-      }
-      
-      @media (max-width: 480px) {
-        .category-banner-container {
-          height: 200px;
-          margin-bottom: 1rem;
-        }
-        .category-banner-container .ecwid-category-image img,
-        .category-banner-container .ec-category-image img,
-        .category-banner-container img {
-          height: 200px !important;
-        }
-        .category-banner-text {
-          font-size: 20px !important;
-        }
-        .category-banner-overlay {
-          max-width: 95%;
-          padding: 15px;
-        }
-      }
-      
-      .category-banner-container ~ .ecwid-category-description,
-      .category-banner-container ~ .ec-category-description,
-      .category-banner-container ~ .category-description {
-        display: none !important;
-      }
-    `;
-    
-    const styleSheet = document.createElement("style");
-    styleSheet.innerText = styles;
-    styleSheet.setAttribute('data-category-banner', 'inline');
-    document.head.appendChild(styleSheet);
-  }
 }
 
-function checkAndCreateBanner() {
-  // Enhanced selectors to catch more theme variations
-  const categoryImageSelectors = [
-    '.ecwid-category-image img',
-    '.ec-category-image img',
-    '.category-image img',
-    '.ec-category .ec-category-image img',
-    '.category-page .category-image img',
-    '.ecwid-category .ecwid-category-image img'
-  ];
-  
-  const categoryDescriptionSelectors = [
-    '.ecwid-category-description',
-    '.ec-category-description',
-    '.category-description',
-    '.ec-category .ec-category-description',
-    '.category-page .category-description',
-    '.ecwid-category .ecwid-category-description'
-  ];
-  
-  let categoryImage = null;
-  let categoryDescription = null;
-  
-  // Find category image
-  for (let selector of categoryImageSelectors) {
-    categoryImage = document.querySelector(selector);
-    if (categoryImage) {
-      console.log('Category Banner: Found category image with selector:', selector);
-      break;
-    }
-  }
-  
-  // Find category description
-  for (let selector of categoryDescriptionSelectors) {
-    categoryDescription = document.querySelector(selector);
-    if (categoryDescription && categoryDescription.textContent.trim()) {
-      console.log('Category Banner: Found category description with selector:', selector);
-      break;
-    }
-  }
-  
-  // Create banner if both elements exist and banner hasn't been created yet
-  if (categoryImage && categoryDescription && !categoryImage.closest('.category-banner-container')) {
-    console.log('Category Banner: Creating banner layout');
-    createBannerLayout(categoryImage, categoryDescription);
-  } else {
-    if (!categoryImage) console.log('Category Banner: No category image found');
-    if (!categoryDescription) console.log('Category Banner: No category description found');
-    if (categoryImage && categoryImage.closest('.category-banner-container')) console.log('Category Banner: Banner already exists');
-  }
-}
 
 function createBannerLayout(imageElement, descriptionElement) {
   const imageContainer = imageElement.closest('.ecwid-category-image, .ec-category-image, .category-image, .ec-category, .ecwid-category') || imageElement.parentElement;
