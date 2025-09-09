@@ -5,7 +5,7 @@
 
 Ecwid.OnAPILoaded.add(function () {
   console.log(
-    "Wholesale App Loaded: Initializing price visibility and category banner."
+    "Wholesale App Loaded: Initializing price visibility, category banner, and product tags."
   );
 
   // Initialize robust wholesale price visibility logic
@@ -13,6 +13,9 @@ Ecwid.OnAPILoaded.add(function () {
 
   // Initialize category banner functionality (preserved)
   initializeCategoryBanner();
+
+  // Initialize product tag system
+  initializeProductTagSystem();
 });
 
 /*****************************************************************************/
@@ -290,4 +293,298 @@ function injectCategoryBannerStyles() {
     link.rel = "stylesheet";
     document.head.appendChild(link);
   }
+}
+
+/*****************************************************************************/
+// PRODUCT TAG SYSTEM FUNCTIONALITY
+/*****************************************************************************/
+
+function initializeProductTagSystem() {
+  try {
+    injectTagStyles();
+
+    // SPA navigation: handle tags on every page load
+    Ecwid.OnPageLoaded.add(handleTagSystemOnPage);
+
+    // On initial load, handle tag page if needed
+    const tagSlugInit = getTagSlugFromUrl();
+    if (tagSlugInit) renderTagPage(tagSlugInit);
+
+    console.log("Tag System: Product tag functionality initialized.");
+  } catch (err) {
+    console.error("Tag System: Initialization failed.", err);
+  }
+}
+
+/**
+ * Utility: Slugify tag for URL
+ */
+function slugifyTag(tag) {
+  return tag
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * Utility: Unslugify for display
+ */
+function unslugifyTag(slug) {
+  return slug
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, function (l) {
+      return l.toUpperCase();
+    });
+}
+
+/**
+ * Fetch product data using REST API with public token
+ */
+function fetchProductData(productId, callback) {
+  try {
+    const storeId = Ecwid.getOwnerId();
+    const publicToken = "public_nupsXaESCGidBYB7gUDny23ahRgXR5Yp"; // Your existing public token
+    const apiUrl = `https://app.ecwid.com/api/v3/${storeId}/products/${productId}`;
+    
+    fetch(apiUrl, {
+      headers: {
+        'Authorization': `Bearer ${publicToken}`
+      }
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data && !data.errorMessage) {
+        callback(data);
+      } else {
+        console.warn("Tag System: Product data fetch failed", data);
+      }
+    })
+    .catch(err => {
+      console.warn("Tag System: Product data fetch error", err);
+    });
+  } catch (err) {
+    console.error("Tag System: fetchProductData error", err);
+  }
+}
+
+/**
+ * Display tags on product detail pages
+ */
+function renderProductTags(product) {
+  try {
+    if (!product || !product.attributes) {
+      console.warn("Tag System: No attributes found on product", product);
+      return;
+    }
+
+    // Find TAGS attribute
+    const tagsAttr = product.attributes.find(
+      (attr) =>
+        attr.type === "TAGS" ||
+        attr.type === "tags" ||
+        attr.name.toLowerCase() === "tags" ||
+        attr.name.toLowerCase().includes("tag")
+    );
+
+    if (!tagsAttr) {
+      console.warn("Tag System: No tag attribute found in product attributes", product.attributes);
+      return;
+    }
+    if (!tagsAttr.value || tagsAttr.value.length === 0) {
+      console.warn("Tag System: Tag attribute found but has no value", tagsAttr);
+      return;
+    }
+
+    // Prevent duplicate injection
+    if (document.querySelector(".product-details-module__tags")) return;
+
+    // Handle both array and string values
+    const tagValues = Array.isArray(tagsAttr.value) ? tagsAttr.value : [tagsAttr.value];
+
+    const tagDiv = document.createElement("div");
+    tagDiv.className = "product-details-module__tags";
+    tagDiv.innerHTML = '<span class="product-tags-label">Tags:</span> ';
+
+    tagValues.forEach(function (tag, idx) {
+      if (tag && tag.trim()) {
+        const slug = slugifyTag(tag.trim());
+        const a = document.createElement("a");
+        a.className = "product-tag-link";
+        a.href = "#" + slug; // Use hash navigation for now
+        a.textContent = tag.trim();
+        a.onclick = function(e) {
+          e.preventDefault();
+          // For now, just show an alert - tag pages will be implemented separately
+          alert("Tag page for '" + tag.trim() + "' - Coming soon!");
+        };
+        tagDiv.appendChild(a);
+        if (idx < tagValues.length - 1) {
+          tagDiv.appendChild(document.createTextNode(", "));
+        }
+      }
+    });
+
+    // Insert after .product-details-module__content
+    const detailsContent = document.querySelector(
+      ".product-details-module__content"
+    );
+    if (detailsContent) {
+      detailsContent.parentNode.insertBefore(tagDiv, detailsContent.nextSibling);
+    }
+
+    console.log("Tag System: Tags rendered for product", product.id);
+  } catch (err) {
+    console.warn("Tag System: Failed to render product tags.", err);
+  }
+}
+
+/**
+ * Detect if current page is a tag page (placeholder for future implementation)
+ */
+function getTagSlugFromUrl() {
+  const m = window.location.pathname.match(/^\/tag\/([a-z0-9\-]+)/i);
+  return m ? m[1] : null;
+}
+
+/**
+ * Render tag page (placeholder for future implementation)
+ */
+function renderTagPage(tagSlug) {
+  try {
+    console.log("Tag System: Tag page requested for:", tagSlug);
+    // Tag pages require server-side implementation or different approach
+    // For now, redirect to search
+    const searchUrl = "/?search=" + encodeURIComponent(unslugifyTag(tagSlug));
+    window.location.href = searchUrl;
+  } catch (err) {
+    console.error("Tag System: Failed to render tag page.", err);
+  }
+}
+
+/**
+ * Inject CSS for tag styling (once)
+ */
+function injectTagStyles() {
+  if (document.getElementById("tag-styles")) return;
+  const css = `
+    .product-details-module__tags {
+      margin-top: 1em;
+      font-size: 1em;
+      color: #444;
+    }
+    .product-tags-label {
+      font-weight: bold;
+      margin-right: 0.5em;
+    }
+    .product-tag-link {
+      display: inline-block;
+      margin-right: 0.25em;
+      color: #337ab7;
+      text-decoration: underline;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+    .product-tag-link:hover {
+      color: #23527c;
+      text-decoration: underline;
+    }
+    .tag-page-title {
+      font-size: 2em;
+      margin-bottom: 0.5em;
+    }
+    .tag-products-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2em 1em;
+      margin-top: 1em;
+    }
+    .tag-product-card {
+      background: #fff;
+      border: 1px solid #eee;
+      border-radius: 6px;
+      padding: 1em;
+      width: 220px;
+      box-sizing: border-box;
+      text-align: center;
+      transition: box-shadow 0.2s;
+    }
+    .tag-product-card:hover {
+      box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+    }
+    .ecwid-productCard-image {
+      max-width: 100%;
+      max-height: 160px;
+      margin-bottom: 0.5em;
+      border-radius: 4px;
+      background: #fafafa;
+    }
+    .ecwid-productCard-name {
+      display: block;
+      font-weight: bold;
+      color: #222;
+      margin-bottom: 0.5em;
+      text-decoration: none;
+    }
+    .ecwid-productCard-name:hover {
+      color: #337ab7;
+    }
+    .ecwid-productCard-price {
+      color: #444;
+      font-size: 1.1em;
+      margin-bottom: 0.5em;
+    }
+    .tag-no-products {
+      color: #888;
+      font-style: italic;
+      margin: 2em 0;
+    }
+    .ec-breadcrumbs {
+      margin-bottom: 1em;
+      font-size: 0.95em;
+      color: #888;
+    }
+    .ec-breadcrumbs a {
+      color: #337ab7;
+      text-decoration: underline;
+    }
+  `;
+  const style = document.createElement("style");
+  style.id = "tag-styles";
+  style.innerText = css;
+  document.head.appendChild(style);
+}
+
+/**
+ * Main tag system handler for SPA navigation
+ */
+function handleTagSystemOnPage(page) {
+  try {
+    // Product detail page: render tags
+    if (page && page.type === "PRODUCT" && page.productId) {
+      console.log("Tag System: Product page detected, ID:", page.productId);
+      
+      // Use REST API to fetch product data with attributes
+      fetchProductData(page.productId, function(product) {
+        setTimeout(function () {
+          renderProductTags(product);
+        }, 500); // Longer delay to ensure DOM is ready
+      });
+    }
+    
+    // Tag page: render tag products (placeholder)
+    const tagSlug = getTagSlugFromUrl();
+    if (tagSlug) {
+      renderTagPage(tagSlug);
+    }
+  } catch (err) {
+    console.error("Tag System: Error in page handler.", err);
+  }
+}
+
+try {
+  window.initializeProductTagSystem = initializeProductTagSystem;
+  window.renderProductTags = renderProductTags;
+  window.fetchProductData = fetchProductData;
+} catch (e) {
+  console.warn("Tag System: Could not export functions to window", e);
 }
