@@ -128,20 +128,23 @@ function initializeCategoryBanner() {
 
   // Listen for category page loads
   Ecwid.OnPageLoaded.add(function (page) {
-    if (page.type === "CATEGORY" && page.categoryId) {
-      console.log(
-        "Category Banner: Detected category page, ID:",
-        page.categoryId
-      );
-      setTimeout(function () {
-        fetchAndCreateCategoryBanner_Prod(page.categoryId);
-      }, 400);
-
-      // Additional check after a longer delay for slow loading
-      setTimeout(function () {
-        fetchAndCreateCategoryBanner_Prod(page.categoryId);
-      }, 1800);
+    cleanupCategoryBanner();
+    if (page.type !== "CATEGORY" || !page.categoryId) {
+      // Ensure cleanup on non-category pages and skip banner creation
+      return;
     }
+    console.log(
+      "Category Banner: Detected category page, ID:",
+      page.categoryId
+    );
+    setTimeout(function () {
+      fetchAndCreateCategoryBanner_Prod(page.categoryId);
+    }, 400);
+
+    // Additional check after a longer delay for slow loading
+    setTimeout(function () {
+      fetchAndCreateCategoryBanner_Prod(page.categoryId);
+    }, 1800);
   });
 
   // Initial check in case DOM is ready before Ecwid SPA event
@@ -172,11 +175,7 @@ function fetchAndCreateCategoryBanner_Prod(categoryId) {
     );
   }
 
-  // Check if banner already exists
-  if (parentContainer.classList.contains("category-banner-container")) {
-    console.log("Category Banner: Banner already exists for this category.");
-    return;
-  }
+  // [REMOVED GUARD] - No longer block if banner class is present
 
   // Use hardcoded store ID and public token for secure API access
   const storeId = "121843055";
@@ -218,6 +217,51 @@ function fetchAndCreateCategoryBanner_Prod(categoryId) {
         err
       );
     });
+}
+
+function cleanupCategoryBanner() {
+  try {
+    const parentContainer = document.querySelector(".ecwid-productBrowser-head");
+    if (!parentContainer) {
+      console.log("Category Banner: Cleanup performed (no parent container found)");
+      return;
+    }
+
+    // Remove banner container class if present
+    parentContainer.classList.remove("category-banner-container");
+
+    // Remove all .category-banner wrappers under parentContainer
+    const wrappers = parentContainer.querySelectorAll(".category-banner");
+    wrappers.forEach(function(wrapper) {
+      // Find overlay inside wrapper (either .category-banner-text or .grid__description)
+      let overlay = wrapper.querySelector(".category-banner-text") ||
+                    wrapper.querySelector(".grid__description");
+      if (overlay) {
+        // Move overlay out of wrapper, place after parentContainer in DOM
+        // (If parentContainer has a next sibling, insert before it; else, append to parent)
+        const parentOfParent = parentContainer.parentNode;
+        if (parentOfParent) {
+          if (parentContainer.nextSibling) {
+            parentOfParent.insertBefore(overlay, parentContainer.nextSibling);
+          } else {
+            parentOfParent.appendChild(overlay);
+          }
+        }
+      }
+      // Remove the wrapper itself
+      wrapper.remove();
+    });
+
+    // Remove any .category-banner-img-from-api images directly under parentContainer (defensive)
+    const imgs = parentContainer.querySelectorAll(".category-banner-img-from-api");
+    imgs.forEach(function(img) {
+      img.remove();
+    });
+
+    console.log("Category Banner: Cleanup performed");
+  } catch (err) {
+    console.warn("Category Banner: Cleanup error", err);
+  }
 }
 
 // Build the banner using the fetched image and description overlay
