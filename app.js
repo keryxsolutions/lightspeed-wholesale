@@ -168,9 +168,8 @@ function fetchAndCreateCategoryBanner_Prod(categoryId) {
   const descContainer = document.querySelector(".grid__description");
   if (!descContainer) {
     console.log(
-      "Category Banner: No .grid__description found, aborting banner creation."
+      "Category Banner: No .grid__description found, continuing banner creation."
     );
-    return;
   }
 
   // Check if banner already exists
@@ -223,6 +222,13 @@ function fetchAndCreateCategoryBanner_Prod(categoryId) {
 
 // Build the banner using the fetched image and description overlay
 function createApiCategoryBanner(descContainer, overlay, imageUrl) {
+  // Safety: require container only; overlay is optional
+  if (!descContainer) {
+    console.log(
+      "Category Banner: Missing container, skipping banner creation."
+    );
+    return;
+  }
   // Add banner container class
   descContainer.classList.add("category-banner-container");
 
@@ -249,12 +255,16 @@ function createApiCategoryBanner(descContainer, overlay, imageUrl) {
 
   // Insert image as first child of banner container
   wrapper.appendChild(img);
-  wrapper.appendChild(overlay);
+  if (overlay) {
+    wrapper.appendChild(overlay);
+  }
   descContainer.insertBefore(wrapper, descContainer.firstChild);
 
   // Add overlay classes (use minimal class for new CSS)
-  overlay.classList.add("category-banner-text");
-  overlay.style = "";
+  if (overlay) {
+    overlay.classList.add("category-banner-text");
+    overlay.style = "";
+  }
 
   // Log success
   console.log("Category Banner: Banner created with API image:", imageUrl);
