@@ -152,6 +152,7 @@ function initializeCategoryBanner() {
     const page =
       window.Ecwid && Ecwid.getLastLoadedPage && Ecwid.getLastLoadedPage();
     if (page && page.type === "CATEGORY" && page.categoryId) {
+      cleanupCategoryBanner(); // Ensure fresh state before initial render
       fetchAndCreateCategoryBanner_Prod(page.categoryId);
     }
   }, 800);
@@ -164,6 +165,12 @@ function fetchAndCreateCategoryBanner_Prod(categoryId) {
     console.log(
       "Category Banner: No .ecwid-productBrowser-head found, aborting banner creation."
     );
+    return;
+  }
+
+  // Prevent duplicate wrapper if already present
+  if (parentContainer.querySelector('.category-banner')) {
+    console.log("Category Banner: Wrapper exists, skipping duplicate render.");
     return;
   }
 
@@ -208,7 +215,9 @@ function fetchAndCreateCategoryBanner_Prod(categoryId) {
         );
         return;
       }
-      // Create or update the banner
+      // Ensure no leftover banner-container class before creation
+      parentContainer.classList.remove("category-banner-container");
+      // Create or update the banner (now using parentContainer as container, descContainer as overlay)
       createApiCategoryBanner(parentContainer, descContainer, imageUrl);
     })
     .catch((err) => {
@@ -237,19 +246,18 @@ function cleanupCategoryBanner() {
       let overlay = wrapper.querySelector(".category-banner-text") ||
                     wrapper.querySelector(".grid__description");
       if (overlay) {
-        // Move overlay out of wrapper, place after parentContainer in DOM
-        // (If parentContainer has a next sibling, insert before it; else, append to parent)
-        const parentOfParent = parentContainer.parentNode;
-        if (parentOfParent) {
-          if (parentContainer.nextSibling) {
-            parentOfParent.insertBefore(overlay, parentContainer.nextSibling);
-          } else {
-            parentOfParent.appendChild(overlay);
-          }
-        }
+        // Move overlay out of wrapper, place as last child of parentContainer
+        parentContainer.appendChild(overlay);
       }
       // Remove the wrapper itself
       wrapper.remove();
+    });
+
+    // Defensive: Remove any top-level .category-banner elements directly under parentContainer (stray/empty)
+    Array.from(parentContainer.children).forEach(function(child) {
+      if (child.classList && child.classList.contains("category-banner")) {
+        child.remove();
+      }
     });
 
     // Remove any .category-banner-img-from-api images directly under parentContainer (defensive)
@@ -265,19 +273,19 @@ function cleanupCategoryBanner() {
 }
 
 // Build the banner using the fetched image and description overlay
-function createApiCategoryBanner(descContainer, overlay, imageUrl) {
+function createApiCategoryBanner(container, overlay, imageUrl) {
   // Safety: require container only; overlay is optional
-  if (!descContainer) {
+  if (!container) {
     console.log(
       "Category Banner: Missing container, skipping banner creation."
     );
     return;
   }
   // Add banner container class
-  descContainer.classList.add("category-banner-container");
+  container.classList.add("category-banner-container");
 
   // Remove any previous banner images
-  const oldBannerImg = descContainer.querySelector(
+  const oldBannerImg = container.querySelector(
     ".category-banner-img-from-api"
   );
   if (oldBannerImg) oldBannerImg.remove();
@@ -302,7 +310,7 @@ function createApiCategoryBanner(descContainer, overlay, imageUrl) {
   if (overlay) {
     wrapper.appendChild(overlay);
   }
-  descContainer.insertBefore(wrapper, descContainer.firstChild);
+  container.insertBefore(wrapper, container.firstChild);
 
   // Add overlay classes (use minimal class for new CSS)
   if (overlay) {
@@ -315,7 +323,7 @@ function createApiCategoryBanner(descContainer, overlay, imageUrl) {
 
   // Force reflow
   setTimeout(function () {
-    descContainer.offsetHeight;
+    container.offsetHeight;
   }, 100);
 }
 
