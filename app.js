@@ -6,9 +6,6 @@
 const clientId = "custom-app-121843055-1";
 
 Ecwid.OnAPILoaded.add(function () {
-  console.log(
-    "Wholesale App Loaded: Initializing price visibility, category banner, and product tags."
-  );
 
   // Initialize robust wholesale price visibility logic
   initializeWholesalePriceVisibility();
@@ -50,14 +47,6 @@ function waitForEcwidAndTokens(maxAttempts = 60, interval = 250) {
         }
       } else if (attempts < maxAttempts) {
         attempts++;
-        if (attempts % 8 === 0) {
-          console.log(
-            "Ecwid token: Waiting for Ecwid API... attempt",
-            attempts,
-            "/",
-            maxAttempts
-          );
-        }
         setTimeout(check, interval);
       } else {
         console.error(
@@ -149,15 +138,9 @@ function initializeWholesalePriceVisibility() {
       if (isLoggedIn) {
         setWholesaleConfig(true);
         removeWholesaleHidingCSS();
-        console.log(
-          "Wholesale: Logged-in user, showing prices and buy buttons."
-        );
       } else {
         setWholesaleConfig(false);
         injectWholesaleHidingCSS();
-        console.log(
-          "Wholesale: Guest user, hiding prices, buy buttons, and price filter."
-        );
       }
     });
   }
@@ -176,9 +159,6 @@ function initializeWholesalePriceVisibility() {
 /*****************************************************************************/
 
 function initializeCategoryBanner() {
-  console.log(
-    "Category Banner: Initializing production banner functionality (API-based, secure token)"
-  );
 
   // Inject CSS styles for category banner
   injectCategoryBannerStyles();
@@ -190,10 +170,6 @@ function initializeCategoryBanner() {
       // Ensure cleanup on non-category pages and skip banner creation
       return;
     }
-    console.log(
-      "Category Banner: Detected category page, ID:",
-      page.categoryId
-    );
     setTimeout(function () {
       fetchAndCreateCategoryBanner_Prod(page.categoryId);
     }, 400);
@@ -219,43 +195,32 @@ function initializeCategoryBanner() {
 function fetchAndCreateCategoryBanner_Prod(categoryId) {
   const parentContainer = document.querySelector(".ecwid-productBrowser-head");
   if (!parentContainer) {
-    console.log(
-      "Category Banner: No .ecwid-productBrowser-head found, aborting banner creation."
+    console.warn(
+      "Category Banner: Parent container not found; cannot render banner."
     );
     return;
   }
 
   // Prevent duplicate wrapper if already present
   if (parentContainer.querySelector('.category-banner')) {
-    console.log("Category Banner: Wrapper exists, skipping duplicate render.");
     return;
   }
 
   // Find the description container and overlay
   const descContainer = document.querySelector(".grid__description");
-  if (!descContainer) {
-    console.log(
-      "Category Banner: No .grid__description found, continuing banner creation."
-    );
-  }
 
   // [REMOVED GUARD] - No longer block if banner class is present
 
   // Dynamically resolve storeId and public token; wait until Ecwid API is ready
 
   waitForEcwidAndTokens()
-    .then(({ storeId, publicToken, tokenSource }) => {
+    .then(({ storeId, publicToken }) => {
       const apiUrl = `https://app.ecwid.com/api/v3/${storeId}/categories/${categoryId}`;
-      console.log("Category Banner: Fetching category data from API:", apiUrl, "tokenSource:", tokenSource);
 
       return fetch(apiUrl, {
         headers: {
           Authorization: `Bearer ${publicToken}`,
         },
-      }).then(resp => {
-        if (!resp) return resp;
-        console.log("Category Banner: Fetch response status:", resp.status, resp.statusText);
-        return resp;
       });
     })
     .then((resp) => (resp ? resp.json() : null))
@@ -294,7 +259,6 @@ function cleanupCategoryBanner() {
   try {
     const parentContainer = document.querySelector(".ecwid-productBrowser-head");
     if (!parentContainer) {
-      console.log("Category Banner: Cleanup performed (no parent container found)");
       return;
     }
 
@@ -328,7 +292,6 @@ function cleanupCategoryBanner() {
       img.remove();
     });
 
-    console.log("Category Banner: Cleanup performed");
   } catch (err) {
     console.warn("Category Banner: Cleanup error", err);
   }
@@ -338,8 +301,8 @@ function cleanupCategoryBanner() {
 function createApiCategoryBanner(container, overlay, imageUrl) {
   // Safety: require container only; overlay is optional
   if (!container) {
-    console.log(
-      "Category Banner: Missing container, skipping banner creation."
+    console.warn(
+      "Category Banner: Missing container; skipping banner creation."
     );
     return;
   }
@@ -380,9 +343,6 @@ function createApiCategoryBanner(container, overlay, imageUrl) {
     overlay.style = "";
   }
 
-  // Log success
-  console.log("Category Banner: Banner created with API image:", imageUrl);
-
   // Force reflow
   setTimeout(function () {
     container.offsetHeight;
@@ -400,9 +360,7 @@ function injectCategoryBannerStyles() {
     localCssLink.rel = "stylesheet";
     localCssLink.href =
       "https://keryxsolutions.github.io/lightspeed-wholesale/app.css";
-    localCssLink.onload = function () {
-      console.log("Category Banner: External app.css loaded successfully");
-    };
+    localCssLink.onload = function () {};
     localCssLink.onerror = function () {
       console.warn("Category Banner: Failed to load external app.css");
     };
@@ -434,7 +392,7 @@ function initializeProductTagSystem() {
     const tagSlugInit = getTagSlugFromUrl();
     if (tagSlugInit) renderTagPage(tagSlugInit);
 
-    console.log("Tag System: Product tag functionality initialized.");
+    // Tag system initialized
   } catch (err) {
     console.error("Tag System: Initialization failed.", err);
   }
@@ -468,17 +426,12 @@ function fetchProductData(productId, callback) {
   try {
     // Dynamically resolve storeId and public token; wait until Ecwid API is ready
     waitForEcwidAndTokens()
-      .then(({ storeId, publicToken, tokenSource }) => {
+      .then(({ storeId, publicToken }) => {
         const apiUrl = `https://app.ecwid.com/api/v3/${storeId}/products/${productId}`;
-        console.log("Tag System: Fetching product from API:", apiUrl, "tokenSource:", tokenSource);
         return fetch(apiUrl, {
           headers: {
             'Authorization': `Bearer ${publicToken}`
           }
-        }).then(resp => {
-          if (!resp) return resp;
-          console.log("Tag System: Fetch response status:", resp.status, resp.statusText);
-          return resp;
         });
       })
       .then(response => response ? response.json() : null)
