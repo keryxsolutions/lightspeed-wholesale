@@ -36,7 +36,6 @@
   left: 0;
   line-height: 1.4;
   margin: 0 auto;
-  max-width: calc(var(--global-tile-max-width) * 1px);
   min-height: 50px;
   padding: 0 var(--category-banner-margin);
   position: absolute;
