@@ -243,17 +243,25 @@ function cleanupCategoryBanner() {
     // Remove banner container class if present
     parentContainer.classList.remove("category-banner-container");
 
-    // Remove all .category-banner wrappers under parentContainer
-    const wrappers = parentContainer.querySelectorAll(".category-banner");
-    wrappers.forEach(function(wrapper) {
-      // Find overlay inside wrapper (either .category-banner-text or .grid__description)
-      let overlay = wrapper.querySelector(".category-banner-text") ||
-                    wrapper.querySelector(".grid__description");
-      if (overlay) {
-        // Move overlay out of wrapper, place as last child of parentContainer
-        parentContainer.appendChild(overlay);
+    // Normalize overlays (handles both wrapper-nested and direct-child cases)
+    const overlayCandidates = parentContainer.querySelectorAll(
+      ".category-banner .category-banner-text, .category-banner .grid__description, .category-banner-text"
+    );
+    overlayCandidates.forEach(function(node) {
+      if (!node || !node.classList) return;
+      // Strip banner overlay class and inline styles
+      node.classList.remove("category-banner-text");
+      node.removeAttribute("style");
+      // Ensure it has grid__description class
+      if (!node.classList.contains("grid__description")) {
+        node.classList.add("grid__description");
       }
-      // Remove the wrapper itself
+      // Move overlay to be a direct child (last) of parentContainer
+      parentContainer.appendChild(node);
+    });
+
+    // Remove all .category-banner wrappers under parentContainer
+    parentContainer.querySelectorAll(".category-banner").forEach(function(wrapper) {
       wrapper.remove();
     });
 
@@ -264,7 +272,7 @@ function cleanupCategoryBanner() {
       }
     });
 
-    // Remove any .category-banner-img-from-api images directly under parentContainer (defensive)
+    // Remove any .category-banner-img-from-api images under parentContainer (defensive)
     const imgs = parentContainer.querySelectorAll(".category-banner-img-from-api");
     imgs.forEach(function(img) {
       img.remove();
