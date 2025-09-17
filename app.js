@@ -59,7 +59,7 @@ function initializeWholesalePriceVisibility() {
     style.id = "wholesale-hide-css";
     style.innerText = `
       /* Hide product prices, buy buttons, and price filter for guests */
-      .details-product-purchase__add-to-bag, /* add to bag button on product pages */
+      .details-product-purchase__controls, /* checkout and add to bag controls on product pages */
       .ec-filter--price, /* price filter widget on category pages */
       .ecwid-productBrowser-price,
       .ecwid-price-value,
