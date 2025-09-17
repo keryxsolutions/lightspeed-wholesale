@@ -23,7 +23,7 @@ Ecwid.OnAPILoaded.add(function () {
 /*****************************************************************************/
 
 // Top-level helper: wait for Ecwid API readiness and resolve storeId + public token
-function waitForEcwidAndTokens(maxAttempts = 50, interval = 200) {
+function waitForEcwidAndTokens(maxAttempts = 60, interval = 250) {
   return new Promise((resolve, reject) => {
     let attempts = 0;
     function check() {
@@ -34,10 +34,14 @@ function waitForEcwidAndTokens(maxAttempts = 50, interval = 200) {
       ) {
         try {
           const storeId = Ecwid.getOwnerId();
+          if (!clientId) {
+            console.warn("Ecwid token: Missing global clientId; cannot request public token.");
+          }
           Ecwid.getAppPublicToken(clientId, function (token) {
             if (token) {
-              resolve({ storeId, publicToken: token });
+              resolve({ storeId, publicToken: token, tokenSource: 'dynamic' });
             } else {
+              console.warn("Ecwid token: getAppPublicToken returned empty token. Ensure app is installed and clientId is correct.");
               reject(new Error("Ecwid: Empty public token returned"));
             }
           });
@@ -46,8 +50,26 @@ function waitForEcwidAndTokens(maxAttempts = 50, interval = 200) {
         }
       } else if (attempts < maxAttempts) {
         attempts++;
+        if (attempts % 8 === 0) {
+          console.log(
+            "Ecwid token: Waiting for Ecwid API... attempt",
+            attempts,
+            "/",
+            maxAttempts
+          );
+        }
         setTimeout(check, interval);
       } else {
+        console.error(
+          "Ecwid token: API not ready after",
+          maxAttempts,
+          "attempts. Missing methods?",
+          {
+            hasEcwid: !!window.Ecwid,
+            hasGetOwnerId: window.Ecwid && typeof Ecwid.getOwnerId === "function",
+            hasGetAppPublicToken: window.Ecwid && typeof Ecwid.getAppPublicToken === "function",
+          }
+        );
         reject(new Error("Ecwid API not ready: getOwnerId/getAppPublicToken"));
       }
     }
@@ -222,14 +244,18 @@ function fetchAndCreateCategoryBanner_Prod(categoryId) {
   // Dynamically resolve storeId and public token; wait until Ecwid API is ready
 
   waitForEcwidAndTokens()
-    .then(({ storeId, publicToken }) => {
+    .then(({ storeId, publicToken, tokenSource }) => {
       const apiUrl = `https://app.ecwid.com/api/v3/${storeId}/categories/${categoryId}`;
-      console.log("Category Banner: Fetching category data from API:", apiUrl);
+      console.log("Category Banner: Fetching category data from API:", apiUrl, "tokenSource:", tokenSource);
 
       return fetch(apiUrl, {
         headers: {
           Authorization: `Bearer ${publicToken}`,
         },
+      }).then(resp => {
+        if (!resp) return resp;
+        console.log("Category Banner: Fetch response status:", resp.status, resp.statusText);
+        return resp;
       });
     })
     .then((resp) => (resp ? resp.json() : null))
@@ -442,12 +468,17 @@ function fetchProductData(productId, callback) {
   try {
     // Dynamically resolve storeId and public token; wait until Ecwid API is ready
     waitForEcwidAndTokens()
-      .then(({ storeId, publicToken }) => {
+      .then(({ storeId, publicToken, tokenSource }) => {
         const apiUrl = `https://app.ecwid.com/api/v3/${storeId}/products/${productId}`;
+        console.log("Tag System: Fetching product from API:", apiUrl, "tokenSource:", tokenSource);
         return fetch(apiUrl, {
           headers: {
             'Authorization': `Bearer ${publicToken}`
           }
+        }).then(resp => {
+          if (!resp) return resp;
+          console.log("Tag System: Fetch response status:", resp.status, resp.statusText);
+          return resp;
         });
       })
       .then(response => response ? response.json() : null)
