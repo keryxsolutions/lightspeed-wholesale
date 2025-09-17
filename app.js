@@ -7,7 +7,6 @@
 const clientId = "custom-app-121843055-1";
 
 Ecwid.OnAPILoaded.add(function () {
-
   // Initialize robust wholesale price visibility logic
   initializeWholesalePriceVisibility();
 
@@ -26,8 +25,9 @@ function waitForEcwidAndTokens(maxAttempts = 60, interval = 250) {
     let attempts = 0;
     (function tick() {
       const hasEcwid = !!window.Ecwid;
-      const hasOwnerId = hasEcwid && typeof Ecwid.getOwnerId === 'function';
-      const hasPublicToken = hasEcwid && typeof Ecwid.getAppPublicToken === 'function';
+      const hasOwnerId = hasEcwid && typeof Ecwid.getOwnerId === "function";
+      const hasPublicToken =
+        hasEcwid && typeof Ecwid.getAppPublicToken === "function";
       if (hasOwnerId && hasPublicToken) {
         try {
           const storeId = Ecwid.getOwnerId();
@@ -41,12 +41,11 @@ function waitForEcwidAndTokens(maxAttempts = 60, interval = 250) {
       if (attempts++ < maxAttempts) {
         setTimeout(tick, interval);
       } else {
-        reject(new Error('Ecwid API not ready: getOwnerId/getAppPublicToken'));
+        reject(new Error("Ecwid API not ready: getOwnerId/getAppPublicToken"));
       }
     })();
   });
 }
-
 
 /*****************************************************************************/
 // Wholesale Price Visibility
@@ -147,7 +146,6 @@ function initializeWholesalePriceVisibility() {
 /*****************************************************************************/
 
 function initializeCategoryBanner() {
-
   // Inject CSS styles for category banner
   injectCategoryBannerStyles();
 
@@ -190,7 +188,7 @@ async function fetchAndCreateCategoryBanner_Prod(categoryId) {
   }
 
   // Prevent duplicate wrapper if already present
-  if (parentContainer.querySelector('.category-banner')) {
+  if (parentContainer.querySelector(".category-banner")) {
     return;
   }
 
@@ -235,7 +233,9 @@ async function fetchAndCreateCategoryBanner_Prod(categoryId) {
 
 function cleanupCategoryBanner() {
   try {
-    const parentContainer = document.querySelector(".ecwid-productBrowser-head");
+    const parentContainer = document.querySelector(
+      ".ecwid-productBrowser-head"
+    );
     if (!parentContainer) {
       return;
     }
@@ -243,41 +243,12 @@ function cleanupCategoryBanner() {
     // Remove banner container class if present
     parentContainer.classList.remove("category-banner-container");
 
-    // Normalize overlays (handles both wrapper-nested and direct-child cases)
-    const overlayCandidates = parentContainer.querySelectorAll(
-      ".category-banner .category-banner-text, .category-banner .grid__description, .category-banner-text"
-    );
-    overlayCandidates.forEach(function(node) {
-      if (!node || !node.classList) return;
-      // Strip banner overlay class and inline styles
-      node.classList.remove("category-banner-text");
-      node.removeAttribute("style");
-      // Ensure it has grid__description class
-      if (!node.classList.contains("grid__description")) {
-        node.classList.add("grid__description");
-      }
-      // Move overlay to be a direct child (last) of parentContainer
-      parentContainer.appendChild(node);
-    });
-
-    // Remove all .category-banner wrappers under parentContainer
-    parentContainer.querySelectorAll(".category-banner").forEach(function(wrapper) {
-      wrapper.remove();
-    });
-
-    // Defensive: Remove any top-level .category-banner elements directly under parentContainer (stray/empty)
-    Array.from(parentContainer.children).forEach(function(child) {
-      if (child.classList && child.classList.contains("category-banner")) {
-        child.remove();
-      }
-    });
-
-    // Remove any .category-banner-img-from-api images under parentContainer (defensive)
-    const imgs = parentContainer.querySelectorAll(".category-banner-img-from-api");
-    imgs.forEach(function(img) {
-      img.remove();
-    });
-
+    // Remove category banner children if present
+    parentContainer
+      .querySelectorAll(".category-banner")
+      .forEach(function (wrapper) {
+        wrapper.remove();
+      });
   } catch (err) {
     console.warn("Category Banner: Cleanup error", err);
   }
@@ -296,9 +267,7 @@ function createApiCategoryBanner(container, overlay, imageUrl) {
   container.classList.add("category-banner-container");
 
   // Remove any previous banner images
-  const oldBannerImg = container.querySelector(
-    ".category-banner-img-from-api"
-  );
+  const oldBannerImg = container.querySelector(".category-banner-img-from-api");
   if (oldBannerImg) oldBannerImg.remove();
 
   // Create the image element
@@ -398,11 +367,9 @@ function slugifyTag(tag) {
  * Utility: Unslugify for display
  */
 function unslugifyTag(slug) {
-  return slug
-    .replace(/-/g, " ")
-    .replace(/\b\w/g, function (l) {
-      return l.toUpperCase();
-    });
+  return slug.replace(/-/g, " ").replace(/\b\w/g, function (l) {
+    return l.toUpperCase();
+  });
 }
 
 /**
@@ -414,7 +381,7 @@ async function fetchProductData(productId, callback) {
     const { storeId, publicToken } = await waitForEcwidAndTokens();
     const apiUrl = `https://app.ecwid.com/api/v3/${storeId}/products/${productId}`;
     const response = await fetch(apiUrl, {
-      headers: { 'Authorization': `Bearer ${publicToken}` }
+      headers: { Authorization: `Bearer ${publicToken}` },
     });
     const data = response ? await response.json() : null;
     if (data && !data.errorMessage) {
@@ -447,11 +414,17 @@ function renderProductTags(product) {
     );
 
     if (!tagsAttr) {
-      console.warn("Tag System: No tag attribute found in product attributes", product.attributes);
+      console.warn(
+        "Tag System: No tag attribute found in product attributes",
+        product.attributes
+      );
       return;
     }
     if (!tagsAttr.value || tagsAttr.value.length === 0) {
-      console.warn("Tag System: Tag attribute found but has no value", tagsAttr);
+      console.warn(
+        "Tag System: Tag attribute found but has no value",
+        tagsAttr
+      );
       return;
     }
 
@@ -459,7 +432,9 @@ function renderProductTags(product) {
     if (document.querySelector(".product-details-module__tags")) return;
 
     // Handle both array and string values
-    const tagValues = Array.isArray(tagsAttr.value) ? tagsAttr.value : [tagsAttr.value];
+    const tagValues = Array.isArray(tagsAttr.value)
+      ? tagsAttr.value
+      : [tagsAttr.value];
 
     const tagDiv = document.createElement("div");
     tagDiv.className = "product-details-module__tags";
@@ -472,7 +447,7 @@ function renderProductTags(product) {
         a.className = "product-tag-link";
         a.href = "#" + slug; // Use hash navigation for now
         a.textContent = tag.trim();
-        a.onclick = function(e) {
+        a.onclick = function (e) {
           e.preventDefault();
           // For now, just show an alert - tag pages will be implemented separately
           alert("Tag page for '" + tag.trim() + "' - Coming soon!");
@@ -489,7 +464,10 @@ function renderProductTags(product) {
       ".product-details-module__content"
     );
     if (detailsContent) {
-      detailsContent.parentNode.insertBefore(tagDiv, detailsContent.nextSibling);
+      detailsContent.parentNode.insertBefore(
+        tagDiv,
+        detailsContent.nextSibling
+      );
     }
 
     console.log("Tag System: Tags rendered for product", product.id);
@@ -526,10 +504,14 @@ function renderTagPage(tagSlug) {
  */
 function injectTagStyles() {
   // Ensure external app.css is loaded for tag styles (idempotent)
-  if (!document.querySelector('link[href="https://keryxsolutions.github.io/lightspeed-wholesale/app.css"]')) {
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = 'https://keryxsolutions.github.io/lightspeed-wholesale/app.css';
+  if (
+    !document.querySelector(
+      'link[href="https://keryxsolutions.github.io/lightspeed-wholesale/app.css"]'
+    )
+  ) {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = "https://keryxsolutions.github.io/lightspeed-wholesale/app.css";
     document.head.appendChild(link);
   }
 }
@@ -542,15 +524,15 @@ function handleTagSystemOnPage(page) {
     // Product detail page: render tags
     if (page && page.type === "PRODUCT" && page.productId) {
       console.log("Tag System: Product page detected, ID:", page.productId);
-      
+
       // Use REST API to fetch product data with attributes
-      fetchProductData(page.productId, function(product) {
+      fetchProductData(page.productId, function (product) {
         setTimeout(function () {
           renderProductTags(product);
         }, 500); // Longer delay to ensure DOM is ready
       });
     }
-    
+
     // Tag page: render tag products (placeholder)
     const tagSlug = getTagSlugFromUrl();
     if (tagSlug) {
