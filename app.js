@@ -3,6 +3,7 @@
 /* This script assumes that product prices are turned OFF by default in the store's design settings. */
 /* Added category banner functionality for full-width banners with text overlay. */
 
+// App client ID (from your Ecwid app). Uses a single constant per docs.
 const clientId = "custom-app-121843055-1";
 
 Ecwid.OnAPILoaded.add(function () {
@@ -23,46 +24,26 @@ Ecwid.OnAPILoaded.add(function () {
 function waitForEcwidAndTokens(maxAttempts = 60, interval = 250) {
   return new Promise((resolve, reject) => {
     let attempts = 0;
-    function check() {
-      if (
-        window.Ecwid &&
-        typeof Ecwid.getOwnerId === "function" &&
-        typeof Ecwid.getAppPublicToken === "function"
-      ) {
+    (function tick() {
+      const hasEcwid = !!window.Ecwid;
+      const hasOwnerId = hasEcwid && typeof Ecwid.getOwnerId === 'function';
+      const hasPublicToken = hasEcwid && typeof Ecwid.getAppPublicToken === 'function';
+      if (hasOwnerId && hasPublicToken) {
         try {
           const storeId = Ecwid.getOwnerId();
-          if (!clientId) {
-            console.warn("Ecwid token: Missing global clientId; cannot request public token.");
-          }
-          Ecwid.getAppPublicToken(clientId, function (token) {
-            if (token) {
-              resolve({ storeId, publicToken: token, tokenSource: 'dynamic' });
-            } else {
-              console.warn("Ecwid token: getAppPublicToken returned empty token. Ensure app is installed and clientId is correct.");
-              reject(new Error("Ecwid: Empty public token returned"));
-            }
-          });
+          const token = Ecwid.getAppPublicToken(clientId);
+          resolve({ storeId, publicToken: token });
         } catch (e) {
           reject(e);
         }
-      } else if (attempts < maxAttempts) {
-        attempts++;
-        setTimeout(check, interval);
-      } else {
-        console.error(
-          "Ecwid token: API not ready after",
-          maxAttempts,
-          "attempts. Missing methods?",
-          {
-            hasEcwid: !!window.Ecwid,
-            hasGetOwnerId: window.Ecwid && typeof Ecwid.getOwnerId === "function",
-            hasGetAppPublicToken: window.Ecwid && typeof Ecwid.getAppPublicToken === "function",
-          }
-        );
-        reject(new Error("Ecwid API not ready: getOwnerId/getAppPublicToken"));
+        return;
       }
-    }
-    check();
+      if (attempts++ < maxAttempts) {
+        setTimeout(tick, interval);
+      } else {
+        reject(new Error('Ecwid API not ready: getOwnerId/getAppPublicToken'));
+      }
+    })();
   });
 }
 
