@@ -3,6 +3,8 @@
 /* This script assumes that product prices are turned OFF by default in the store's design settings. */
 /* Added category banner functionality for full-width banners with text overlay. */
 
+const clientId = "custom-app-121843055-1";
+
 Ecwid.OnAPILoaded.add(function () {
   console.log(
     "Wholesale App Loaded: Initializing price visibility, category banner, and product tags."
@@ -19,6 +21,39 @@ Ecwid.OnAPILoaded.add(function () {
 });
 
 /*****************************************************************************/
+
+// Top-level helper: wait for Ecwid API readiness and resolve storeId + public token
+function waitForEcwidAndTokens(maxAttempts = 50, interval = 200) {
+  return new Promise((resolve, reject) => {
+    let attempts = 0;
+    function check() {
+      if (
+        window.Ecwid &&
+        typeof Ecwid.getOwnerId === "function" &&
+        typeof Ecwid.getAppPublicToken === "function"
+      ) {
+        try {
+          const storeId = Ecwid.getOwnerId();
+          Ecwid.getAppPublicToken(clientId, function (token) {
+            if (token) {
+              resolve({ storeId, publicToken: token });
+            } else {
+              reject(new Error("Ecwid: Empty public token returned"));
+            }
+          });
+        } catch (e) {
+          reject(e);
+        }
+      } else if (attempts < maxAttempts) {
+        attempts++;
+        setTimeout(check, interval);
+      } else {
+        reject(new Error("Ecwid API not ready: getOwnerId/getAppPublicToken"));
+      }
+    }
+    check();
+  });
+}
 
 function initializeWholesalePriceVisibility() {
   // Helper: inject CSS to hide prices, buy buttons, and price filter widget
@@ -184,19 +219,20 @@ function fetchAndCreateCategoryBanner_Prod(categoryId) {
 
   // [REMOVED GUARD] - No longer block if banner class is present
 
-  // Use hardcoded store ID and public token for secure API access
-  const storeId = "121843055";
-  const publicToken = "public_nupsXaESCGidBYB7gUDny23ahRgXR5Yp";
+  // Dynamically resolve storeId and public token; wait until Ecwid API is ready
 
-  const apiUrl = `https://app.ecwid.com/api/v3/${storeId}/categories/${categoryId}`;
-  console.log("Category Banner: Fetching category data from API:", apiUrl);
+  waitForEcwidAndTokens()
+    .then(({ storeId, publicToken }) => {
+      const apiUrl = `https://app.ecwid.com/api/v3/${storeId}/categories/${categoryId}`;
+      console.log("Category Banner: Fetching category data from API:", apiUrl);
 
-  fetch(apiUrl, {
-    headers: {
-      Authorization: `Bearer ${publicToken}`,
-    },
-  })
-    .then((resp) => resp.json())
+      return fetch(apiUrl, {
+        headers: {
+          Authorization: `Bearer ${publicToken}`,
+        },
+      });
+    })
+    .then((resp) => (resp ? resp.json() : null))
     .then((data) => {
       if (!data || (!data.imageUrl && !data.originalImageUrl)) {
         console.warn(
@@ -222,7 +258,7 @@ function fetchAndCreateCategoryBanner_Prod(categoryId) {
     })
     .catch((err) => {
       console.error(
-        "Category Banner: Failed to fetch category data from API.",
+        "Category Banner: Failed to resolve Ecwid tokens or fetch category data.",
         err
       );
     });
@@ -404,26 +440,27 @@ function unslugifyTag(slug) {
  */
 function fetchProductData(productId, callback) {
   try {
-    const storeId = Ecwid.getOwnerId();
-    const publicToken = "public_nupsXaESCGidBYB7gUDny23ahRgXR5Yp"; // Your existing public token
-    const apiUrl = `https://app.ecwid.com/api/v3/${storeId}/products/${productId}`;
-    
-    fetch(apiUrl, {
-      headers: {
-        'Authorization': `Bearer ${publicToken}`
-      }
-    })
-    .then(response => response.json())
-    .then(data => {
-      if (data && !data.errorMessage) {
-        callback(data);
-      } else {
-        console.warn("Tag System: Product data fetch failed", data);
-      }
-    })
-    .catch(err => {
-      console.warn("Tag System: Product data fetch error", err);
-    });
+    // Dynamically resolve storeId and public token; wait until Ecwid API is ready
+    waitForEcwidAndTokens()
+      .then(({ storeId, publicToken }) => {
+        const apiUrl = `https://app.ecwid.com/api/v3/${storeId}/products/${productId}`;
+        return fetch(apiUrl, {
+          headers: {
+            'Authorization': `Bearer ${publicToken}`
+          }
+        });
+      })
+      .then(response => response ? response.json() : null)
+      .then(data => {
+        if (data && !data.errorMessage) {
+          callback(data);
+        } else {
+          console.warn("Tag System: Product data fetch failed", data);
+        }
+      })
+      .catch(err => {
+        console.warn("Tag System: Product data fetch error", err);
+      });
   } catch (err) {
     console.error("Tag System: fetchProductData error", err);
   }
