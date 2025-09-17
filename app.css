@@ -1,6 +1,8 @@
 /* Lightspeed eCom Custom App CSS - Wholesale Portal */
 
-/* Category Banner Styles */
+/*****************************************************************************/
+/* Category Banner Styles                                                    */
+/*****************************************************************************/
 .ecwid .category-banner {
   --category-banner-margin: calc(
     (100vw - var(--global-tile-max-width) * 1px) / 2
@@ -65,4 +67,103 @@
   .ecwid .category-banner-text {
     font-size: 18px;
   }
+}
+
+/*****************************************************************************/
+/* Product Tag System Styles                                                 */
+/*****************************************************************************/
+
+.product-details-module__tags {
+  margin-top: 1em;
+  font-size: 1em;
+  color: #444;
+}
+
+.product-tags-label {
+  font-weight: bold;
+  margin-right: 0.5em;
+}
+
+.product-tag-link {
+  display: inline-block;
+  margin-right: 0.25em;
+  color: #337ab7;
+  text-decoration: underline;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.product-tag-link:hover {
+  color: #23527c;
+  text-decoration: underline;
+}
+
+.tag-page-title {
+  font-size: 2em;
+  margin-bottom: 0.5em;
+}
+
+.tag-products-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2em 1em;
+  margin-top: 1em;
+}
+
+.tag-product-card {
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 6px;
+  padding: 1em;
+  width: 220px;
+  box-sizing: border-box;
+  text-align: center;
+  transition: box-shadow 0.2s;
+}
+
+.tag-product-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07);
+}
+
+.ecwid-productCard-image {
+  max-width: 100%;
+  max-height: 160px;
+  margin-bottom: 0.5em;
+  border-radius: 4px;
+  background: #fafafa;
+}
+
+.ecwid-productCard-name {
+  display: block;
+  font-weight: bold;
+  color: #222;
+  margin-bottom: 0.5em;
+  text-decoration: none;
+}
+
+.ecwid-productCard-name:hover {
+  color: #337ab7;
+}
+
+.ecwid-productCard-price {
+  color: #444;
+  font-size: 1.1em;
+  margin-bottom: 0.5em;
+}
+
+.tag-no-products {
+  color: #888;
+  font-style: italic;
+  margin: 2em 0;
+}
+
+.ec-breadcrumbs {
+  margin-bottom: 1em;
+  font-size: 0.95em;
+  color: #888;
+}
+
+.ec-breadcrumbs a {
+  color: #337ab7;
+  text-decoration: underline;
 }

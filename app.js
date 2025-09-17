@@ -173,7 +173,7 @@ function initializeCategoryBanner() {
 }
 
 // Fetch category data from Ecwid API and create banner (production version)
-function fetchAndCreateCategoryBanner_Prod(categoryId) {
+async function fetchAndCreateCategoryBanner_Prod(categoryId) {
   const parentContainer = document.querySelector(".ecwid-productBrowser-head");
   if (!parentContainer) {
     console.warn(
@@ -189,51 +189,41 @@ function fetchAndCreateCategoryBanner_Prod(categoryId) {
 
   // Find the description container and overlay
   const descContainer = document.querySelector(".grid__description");
-
-  // [REMOVED GUARD] - No longer block if banner class is present
-
   // Dynamically resolve storeId and public token; wait until Ecwid API is ready
-
-  waitForEcwidAndTokens()
-    .then(({ storeId, publicToken }) => {
-      const apiUrl = `https://app.ecwid.com/api/v3/${storeId}/categories/${categoryId}`;
-
-      return fetch(apiUrl, {
-        headers: {
-          Authorization: `Bearer ${publicToken}`,
-        },
-      });
-    })
-    .then((resp) => (resp ? resp.json() : null))
-    .then((data) => {
-      if (!data || (!data.imageUrl && !data.originalImageUrl)) {
-        console.warn(
-          "Category Banner: No image found in API response for category",
-          categoryId,
-          data
-        );
-        return;
-      }
-      // Prefer imageUrl, fallback to originalImageUrl
-      const imageUrl = data.imageUrl || data.originalImageUrl;
-      if (!imageUrl) {
-        console.warn(
-          "Category Banner: No usable image URL in API response for category",
-          categoryId
-        );
-        return;
-      }
-      // Ensure no leftover banner-container class before creation
-      parentContainer.classList.remove("category-banner-container");
-      // Create or update the banner (now using parentContainer as container, descContainer as overlay)
-      createApiCategoryBanner(parentContainer, descContainer, imageUrl);
-    })
-    .catch((err) => {
-      console.error(
-        "Category Banner: Failed to resolve Ecwid tokens or fetch category data.",
-        err
-      );
+  try {
+    const { storeId, publicToken } = await waitForEcwidAndTokens();
+    const apiUrl = `https://app.ecwid.com/api/v3/${storeId}/categories/${categoryId}`;
+    const resp = await fetch(apiUrl, {
+      headers: { Authorization: `Bearer ${publicToken}` },
     });
+    const data = resp ? await resp.json() : null;
+    if (!data || (!data.imageUrl && !data.originalImageUrl)) {
+      console.warn(
+        "Category Banner: No image found in API response for category",
+        categoryId,
+        data
+      );
+      return;
+    }
+    // Prefer imageUrl, fallback to originalImageUrl
+    const imageUrl = data.imageUrl || data.originalImageUrl;
+    if (!imageUrl) {
+      console.warn(
+        "Category Banner: No usable image URL in API response for category",
+        categoryId
+      );
+      return;
+    }
+    // Ensure no leftover banner-container class before creation
+    parentContainer.classList.remove("category-banner-container");
+    // Create or update the banner (now using parentContainer as container, descContainer as overlay)
+    createApiCategoryBanner(parentContainer, descContainer, imageUrl);
+  } catch (err) {
+    console.error(
+      "Category Banner: Failed to resolve Ecwid tokens or fetch category data.",
+      err
+    );
+  }
 }
 
 function cleanupCategoryBanner() {
@@ -403,31 +393,22 @@ function unslugifyTag(slug) {
 /**
  * Fetch product data using REST API with public token
  */
-function fetchProductData(productId, callback) {
+async function fetchProductData(productId, callback) {
   try {
     // Dynamically resolve storeId and public token; wait until Ecwid API is ready
-    waitForEcwidAndTokens()
-      .then(({ storeId, publicToken }) => {
-        const apiUrl = `https://app.ecwid.com/api/v3/${storeId}/products/${productId}`;
-        return fetch(apiUrl, {
-          headers: {
-            'Authorization': `Bearer ${publicToken}`
-          }
-        });
-      })
-      .then(response => response ? response.json() : null)
-      .then(data => {
-        if (data && !data.errorMessage) {
-          callback(data);
-        } else {
-          console.warn("Tag System: Product data fetch failed", data);
-        }
-      })
-      .catch(err => {
-        console.warn("Tag System: Product data fetch error", err);
-      });
+    const { storeId, publicToken } = await waitForEcwidAndTokens();
+    const apiUrl = `https://app.ecwid.com/api/v3/${storeId}/products/${productId}`;
+    const response = await fetch(apiUrl, {
+      headers: { 'Authorization': `Bearer ${publicToken}` }
+    });
+    const data = response ? await response.json() : null;
+    if (data && !data.errorMessage) {
+      callback(data);
+    } else {
+      console.warn("Tag System: Product data fetch failed", data);
+    }
   } catch (err) {
-    console.error("Tag System: fetchProductData error", err);
+    console.warn("Tag System: Product data fetch error", err);
   }
 }
 
@@ -529,93 +510,13 @@ function renderTagPage(tagSlug) {
  * Inject CSS for tag styling (once)
  */
 function injectTagStyles() {
-  if (document.getElementById("tag-styles")) return;
-  const css = `
-    .product-details-module__tags {
-      margin-top: 1em;
-      font-size: 1em;
-      color: #444;
-    }
-    .product-tags-label {
-      font-weight: bold;
-      margin-right: 0.5em;
-    }
-    .product-tag-link {
-      display: inline-block;
-      margin-right: 0.25em;
-      color: #337ab7;
-      text-decoration: underline;
-      cursor: pointer;
-      transition: color 0.2s;
-    }
-    .product-tag-link:hover {
-      color: #23527c;
-      text-decoration: underline;
-    }
-    .tag-page-title {
-      font-size: 2em;
-      margin-bottom: 0.5em;
-    }
-    .tag-products-grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 2em 1em;
-      margin-top: 1em;
-    }
-    .tag-product-card {
-      background: #fff;
-      border: 1px solid #eee;
-      border-radius: 6px;
-      padding: 1em;
-      width: 220px;
-      box-sizing: border-box;
-      text-align: center;
-      transition: box-shadow 0.2s;
-    }
-    .tag-product-card:hover {
-      box-shadow: 0 2px 8px rgba(0,0,0,0.07);
-    }
-    .ecwid-productCard-image {
-      max-width: 100%;
-      max-height: 160px;
-      margin-bottom: 0.5em;
-      border-radius: 4px;
-      background: #fafafa;
-    }
-    .ecwid-productCard-name {
-      display: block;
-      font-weight: bold;
-      color: #222;
-      margin-bottom: 0.5em;
-      text-decoration: none;
-    }
-    .ecwid-productCard-name:hover {
-      color: #337ab7;
-    }
-    .ecwid-productCard-price {
-      color: #444;
-      font-size: 1.1em;
-      margin-bottom: 0.5em;
-    }
-    .tag-no-products {
-      color: #888;
-      font-style: italic;
-      margin: 2em 0;
-    }
-    .ec-breadcrumbs {
-      margin-bottom: 1em;
-      font-size: 0.95em;
-      color: #888;
-    }
-    .ec-breadcrumbs a {
-      color: #337ab7;
-      text-decoration: underline;
-    }
-  `;
-  const style = document.createElement("style");
-  style.id = "tag-styles";
-  style.innerText = css;
-  document.head.appendChild(style);
+  // Ensure external app.css is loaded for tag styles (idempotent)
+  if (!document.querySelector('link[href="https://keryxsolutions.github.io/lightspeed-wholesale/app.css"]')) {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://keryxsolutions.github.io/lightspeed-wholesale/app.css';
+    document.head.appendChild(link);
+  }
 }
 
 /**
