@@ -47,6 +47,11 @@ function waitForEcwidAndTokens(maxAttempts = 60, interval = 250) {
   });
 }
 
+
+/*****************************************************************************/
+// Wholesale Price Visibility
+/*****************************************************************************/
+
 function initializeWholesalePriceVisibility() {
   // Helper: inject CSS to hide prices, buy buttons, and price filter widget
   function injectWholesaleHidingCSS() {
@@ -55,6 +60,8 @@ function initializeWholesalePriceVisibility() {
     style.id = "wholesale-hide-css";
     style.innerText = `
       /* Hide product prices, buy buttons, and price filter for guests */
+      .details-product-purchase__add-to-bag, /* add to bag button on product pages */
+      .ec-filter--price, /* price filter widget on category pages */
       .ecwid-productBrowser-price,
       .ecwid-price-value,
       .ecwid-btn--add-to-cart,
