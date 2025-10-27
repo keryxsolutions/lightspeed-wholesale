@@ -89,15 +89,20 @@ function initializeWholesalePriceVisibility() {
 
   // Helper: set price/button visibility using ec.storefront.config
   function setWholesaleConfig(show) {
-    window.ec = window.ec || {};
-    window.ec.storefront = window.ec.storefront || {};
-    window.ec.storefront.config = window.ec.storefront.config || {};
-    const config = window.ec.storefront.config;
-    config.product_list_price_behavior = show ? "SHOW" : "HIDE";
-    config.product_list_buybutton_behavior = show ? "SHOW" : "HIDE";
-    config.product_details_show_product_price = !!show;
-    config.product_details_show_buy_button = !!show;
-    if (typeof Ecwid.refreshConfig === "function") Ecwid.refreshConfig();
+    if (isEcwidV3StorefrontLoaded) {
+      window.ec = window.ec || {};
+      window.ec.storefront = window.ec.storefront || {};
+      const config = window.ec.storefront;
+      config.product_list_price_behavior = show ? "SHOW" : "HIDE";
+      config.product_list_buybutton_behavior = show ? "SHOW" : "HIDE";
+      config.product_details_show_product_price = !!show;
+      config.product_details_show_wholesale_prices = !!show;
+      config.product_details_show_number_of_items_in_stock = !!show;
+      config.product_details_show_buy_button = !!show;
+      if (typeof Ecwid.refreshConfig === "function") {
+        Ecwid.refreshConfig();
+      }
+    }
   }
 
   // Poll for Ecwid.Customer API readiness
