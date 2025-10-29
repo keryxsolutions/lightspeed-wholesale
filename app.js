@@ -12,10 +12,7 @@ const WHOLESALE_FLAGS = {
   ENABLE_WHOLESALE_BANNER: true
 };
 
-// Backend base URL (override via window.WHOLESALE_API_BASE)
-const WHOLESALE_API_BASE =
-  (window.WHOLESALE_API_BASE && String(window.WHOLESALE_API_BASE)) ||
-  "https://your-backend.example.com";
+// Backend base URL removed (M4R): using Ecwid REST directly
 
 // Route helpers (supports pathname and hash)
 function isWholesaleRegistrationPath() {
@@ -192,7 +189,7 @@ function buildCustomerUpdatePayload(values) {
   return payload;
 }
 
-async function getWholesaleStatus(customerId) {
+async function ecwidGetWholesaleStatus(customerId) {
   const targetGroupId = await resolveWholesaleGroupId().catch(() => null);
   const customer = await ecwidFetchJSON(`/customers/${encodeURIComponent(customerId)}`, { method: "GET" });
 
@@ -217,11 +214,7 @@ async function getWholesaleStatus(customerId) {
   };
 }
 
-function ecwidGetWholesaleStatus(customerId) {
-  return getWholesaleStatus(customerId);
-}
-
-async function postWholesaleRegistration(values) {
+async function ecwidSubmitWholesaleRegistration(values) {
   await Promise.all([
     ensureExtraFieldKeyByTitle("Cell Phone"),
     ensureExtraFieldKeyByTitle("Tax ID"),
@@ -235,10 +228,6 @@ async function postWholesaleRegistration(values) {
     body: JSON.stringify(payload)
   });
   return json;
-}
-
-function ecwidSubmitWholesaleRegistration(values) {
-  return postWholesaleRegistration(values);
 }
 
 /*****************************************************************************/
