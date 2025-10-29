@@ -6,6 +6,42 @@
 // App client ID (from your Ecwid app). Uses a single constant per docs.
 const clientId = "custom-app-121843055-1";
 
+// Config and flags
+const WHOLESALE_FLAGS = {
+  ENABLE_WHOLESALE_REGISTRATION: true,
+  ENABLE_WHOLESALE_BANNER: true
+};
+
+// Backend base URL (override via window.WHOLESALE_API_BASE)
+const WHOLESALE_API_BASE =
+  (window.WHOLESALE_API_BASE && String(window.WHOLESALE_API_BASE)) ||
+  "https://your-backend.example.com";
+
+// Route helpers (supports pathname and hash)
+function isWholesaleRegistrationPath() {
+  const p = window.location.pathname || "";
+  const h = window.location.hash || "";
+  return p === "/wholesale-registration" || /#\/?wholesale-registration/.test(h);
+}
+function toWholesaleRegistrationPath() {
+  return "/wholesale-registration";
+}
+
+// DOM helpers (idempotent)
+function ensureSingletonNode(id, createEl) {
+  let el = document.getElementById(id);
+  if (!el) {
+    el = createEl();
+    el.id = id;
+    document.head.appendChild(el);
+  }
+  return el;
+}
+function removeNodeById(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
+}
+
 Ecwid.OnAPILoaded.add(function () {
   // Initialize robust wholesale price visibility logic
   initializeWholesalePriceVisibility();
@@ -15,6 +51,9 @@ Ecwid.OnAPILoaded.add(function () {
 
   // Initialize product tag system
   initializeProductTagSystem();
+
+  // Initialize wholesale registration (routing, banner, page shell)
+  initializeWholesaleRegistration();
 });
 
 /*****************************************************************************/
@@ -45,6 +84,34 @@ function waitForEcwidAndTokens(maxAttempts = 60, interval = 250) {
       }
     })();
   });
+}
+
+/*****************************************************************************/
+
+function normalizeWholesaleBase(base) {
+  return String(base || "").replace(/\/+$/, "");
+}
+
+async function getWholesaleStatus(customerId) {
+  const { storeId } = await waitForEcwidAndTokens();
+  const base = normalizeWholesaleBase(WHOLESALE_API_BASE);
+  const url = `${base}/api/wholesale/status?customerId=${encodeURIComponent(customerId)}&storeId=${encodeURIComponent(storeId)}`;
+  const res = await fetch(url, { method: "GET" });
+  if (!res.ok) throw new Error(`Wholesale status request failed: ${res.status}`);
+  return res.json();
+}
+
+async function postWholesaleRegistration(payload) {
+  const { storeId } = await waitForEcwidAndTokens();
+  const base = normalizeWholesaleBase(WHOLESALE_API_BASE);
+  const url = `${base}/api/wholesale/register`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ storeId, ...(payload || {}) })
+  });
+  if (!res.ok) throw new Error(`Wholesale registration failed: ${res.status}`);
+  return res.json();
 }
 
 /*****************************************************************************/
@@ -144,6 +211,17 @@ function initializeWholesalePriceVisibility() {
   Ecwid.OnPageLoaded.add(function () {
     pollForCustomerAPI(updateWholesaleVisibility);
   });
+}
+
+try {
+  window.triggerWholesaleVisibilityRefresh = function () {
+    if (!window.Ecwid || !Ecwid.Customer || typeof Ecwid.Customer.get !== "function") return;
+    Ecwid.Customer.get(function () {
+      if (typeof Ecwid.refreshConfig === "function") Ecwid.refreshConfig();
+    });
+  };
+} catch (e) {
+  console.warn("Wholesale: Could not expose visibility refresh", e);
 }
 
 /*****************************************************************************/
@@ -554,4 +632,199 @@ try {
   window.fetchProductData = fetchProductData;
 } catch (e) {
   console.warn("Tag System: Could not export functions to window", e);
+}
+
+/*****************************************************************************/
+// WHOLESALE REGISTRATION MODULE
+/*****************************************************************************/
+
+function initializeWholesaleRegistration() {
+  if (!WHOLESALE_FLAGS.ENABLE_WHOLESALE_REGISTRATION) return;
+
+  // Initial run
+  try {
+    const last = window.Ecwid && Ecwid.getLastLoadedPage && Ecwid.getLastLoadedPage();
+    handleWholesaleRegistrationOnPage(last || { type: "UNKNOWN" });
+  } catch (e) {
+    handleWholesaleRegistrationOnPage({ type: "UNKNOWN" });
+  }
+
+  // SPA navigation
+  Ecwid.OnPageLoaded.add(handleWholesaleRegistrationOnPage);
+
+  // Hash-based routing support
+  window.addEventListener("hashchange", function () {
+    const page = window.Ecwid && Ecwid.getLastLoadedPage && Ecwid.getLastLoadedPage();
+    handleWholesaleRegistrationOnPage(page || { type: "UNKNOWN" });
+  });
+}
+
+// Session cache to reduce repeated status calls
+const WHOLESALE_STATUS_CACHE = { customerId: null, isWholesaleApproved: null };
+
+function fetchLoggedInCustomer() {
+  return new Promise((resolve) => {
+    if (!window.Ecwid || !Ecwid.Customer || typeof Ecwid.Customer.get !== "function") {
+      resolve(null);
+      return;
+    }
+    Ecwid.Customer.get((c) => resolve(c && c.email ? c : null));
+  });
+}
+
+async function handleWholesaleRegistrationOnPage(page) {
+  try {
+    const onReg = isWholesaleRegistrationPath();
+    const customer = await fetchLoggedInCustomer();
+
+    // Cleanup when leaving registration route
+    if (!onReg) {
+      forceHidePricesOnRegistration(false);
+      removeNodeById("wholesale-registration-root");
+    }
+
+    // Banner visibility (hidden on registration route)
+    await renderWholesaleBanner({ customer, onReg });
+
+    // Registration route: render shell and force-hide prices
+    if (onReg) {
+      renderWholesaleRegistrationPageShell(customer);
+      forceHidePricesOnRegistration(true);
+      return;
+    }
+
+    // Non-registration routes: redirect logged-in non-wholesale users
+    if (customer && typeof getWholesaleStatus === "function") {
+      // Use cache when available
+      if (
+        WHOLESALE_STATUS_CACHE.customerId === customer.id &&
+        WHOLESALE_STATUS_CACHE.isWholesaleApproved != null
+      ) {
+        if (!WHOLESALE_STATUS_CACHE.isWholesaleApproved) {
+          window.location.href = toWholesaleRegistrationPath();
+        }
+        return;
+      }
+
+      const status = await getWholesaleStatus(customer.id).catch(() => null);
+      if (status && typeof status.isWholesaleApproved === "boolean") {
+        WHOLESALE_STATUS_CACHE.customerId = customer.id;
+        WHOLESALE_STATUS_CACHE.isWholesaleApproved = !!status.isWholesaleApproved;
+        if (!status.isWholesaleApproved) {
+          window.location.href = toWholesaleRegistrationPath();
+          return;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Wholesale Reg: handler error", e);
+  }
+}
+
+async function renderWholesaleBanner({ customer, onReg }) {
+  if (!WHOLESALE_FLAGS.ENABLE_WHOLESALE_BANNER || onReg) {
+    removeNodeById("wholesale-registration-banner");
+    return;
+  }
+
+  // Show for guests; for logged-in users only if not wholesale-approved
+  let shouldShow = !customer;
+  if (customer && typeof getWholesaleStatus === "function") {
+    if (
+      WHOLESALE_STATUS_CACHE.customerId === customer.id &&
+      WHOLESALE_STATUS_CACHE.isWholesaleApproved != null
+    ) {
+      shouldShow = !WHOLESALE_STATUS_CACHE.isWholesaleApproved;
+    } else {
+      const status = await getWholesaleStatus(customer.id).catch(() => null);
+      if (status && typeof status.isWholesaleApproved === "boolean") {
+        WHOLESALE_STATUS_CACHE.customerId = customer.id;
+        WHOLESALE_STATUS_CACHE.isWholesaleApproved = !!status.isWholesaleApproved;
+        shouldShow = !status.isWholesaleApproved;
+      } else {
+        // Fail-open on errors
+        shouldShow = true;
+      }
+    }
+  }
+
+  const id = "wholesale-registration-banner";
+  if (!shouldShow) {
+    removeNodeById(id);
+    return;
+  }
+
+  const container = document.querySelector(".ecwid-productBrowser") || document.body;
+  let el = document.getElementById(id);
+  if (!el) {
+    el = document.createElement("div");
+    el.id = id;
+    el.className = "wholesale-registration-banner";
+    // Minimal sticky inline styles (avoid app.css changes in M2)
+    el.style.position = "sticky";
+    el.style.top = "0";
+    el.style.zIndex = "1000";
+    el.style.background = "#0b5fff";
+    el.style.color = "#fff";
+    el.style.padding = "10px 12px";
+    el.style.textAlign = "center";
+    el.style.fontWeight = "600";
+    container.prepend(el);
+  }
+
+  el.innerHTML =
+    '<span>Register to access prices and place an order.</span> ' +
+    `<a href="${toWholesaleRegistrationPath()}" style="color:#fff;text-decoration:underline;margin-left:8px;">Register</a>`;
+}
+
+function forceHidePricesOnRegistration(on) {
+  const id = "wholesale-registration-hide-css";
+  if (!on) {
+    document.body.classList.remove("wholesale-registration-page");
+    removeNodeById(id);
+    return;
+  }
+  ensureSingletonNode(id, () => {
+    const s = document.createElement("style");
+    s.textContent = `
+      body.wholesale-registration-page .details-product-purchase__controls,
+      body.wholesale-registration-page .ec-filter--price,
+      body.wholesale-registration-page .ecwid-productBrowser-price,
+      body.wholesale-registration-page .ecwid-price-value,
+      body.wholesale-registration-page .ecwid-btn--add-to-cart,
+      body.wholesale-registration-page .ecwid-add-to-cart-button-container,
+      body.wholesale-registration-page .product-card-buy-icon,
+      body.wholesale-registration-page .ec-filter__item--price,
+      body.wholesale-registration-page .ec-price-filter { display: none !important; }
+    `;
+    return s;
+  });
+  document.body.classList.add("wholesale-registration-page");
+}
+
+function renderWholesaleRegistrationPageShell(customer) {
+  const container =
+    document.querySelector(".ecwid-productBrowser") ||
+    document.querySelector(".ec-page") ||
+    document.body;
+
+  let root = document.getElementById("wholesale-registration-root");
+  if (!root) {
+    root = document.createElement("div");
+    root.id = "wholesale-registration-root";
+    // Minimal inline spacing for M2
+    root.style.background = "#fff";
+    root.style.border = "1px solid #eee";
+    root.style.borderRadius = "8px";
+    root.style.padding = "16px";
+    root.style.margin = "12px 0";
+    container.prepend(root);
+  }
+
+  const email = (customer && customer.email) || "";
+  root.innerHTML = [
+    '<h1 style="margin:0 0 8px;">Wholesale Registration</h1>',
+    email ? `<div style="margin-bottom:8px;color:#555;">Signed in as: <strong>${email}</strong></div>` : "",
+    '<div>This is the registration page. The full form will appear here.</div>'
+  ].join("");
 }
