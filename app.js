@@ -102,30 +102,131 @@ function waitForEcwidAndTokens(maxAttempts = 60, interval = 250) {
 
 /*****************************************************************************/
 
-function normalizeWholesaleBase(base) {
-  return String(base || "").replace(/\/+$/, "");
+function getWholesaleGroupName() {
+  return (window.WHOLESALE_GROUP_NAME && String(window.WHOLESALE_GROUP_NAME)) || "Wholesale Customer";
+}
+
+const WHOLESALE_CACHE = {
+  groupId: null,
+  extraFieldKeysByTitle: {}
+};
+
+async function ecwidFetchJSON(path, options) {
+  const { storeId, publicToken } = await waitForEcwidAndTokens();
+  const url = `https://app.ecwid.com/api/v3/${storeId}${path}`;
+  const init = options || {};
+  const headers = Object.assign(
+    { Authorization: `Bearer ${publicToken}`, "Content-Type": "application/json" },
+    init.headers || {}
+  );
+  const res = await fetch(url, Object.assign({}, init, { headers }));
+  if (!res.ok) throw new Error(`Ecwid API error ${res.status} for ${path}`);
+  return res.json();
+}
+
+async function resolveWholesaleGroupId() {
+  if (WHOLESALE_CACHE.groupId) return WHOLESALE_CACHE.groupId;
+  const data = await ecwidFetchJSON("/customer_groups", { method: "GET" });
+  const items = Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : [];
+  const targetName = getWholesaleGroupName().toLowerCase();
+  const match = items.find(g => g && typeof g.name === "string" && g.name.toLowerCase() === targetName);
+  WHOLESALE_CACHE.groupId = match ? match.id : null;
+  return WHOLESALE_CACHE.groupId;
+}
+
+async function ensureExtraFieldKeyByTitle(title) {
+  const t = String(title || "").trim();
+  if (!t) return null;
+  if (WHOLESALE_CACHE.extraFieldKeysByTitle[t]) return WHOLESALE_CACHE.extraFieldKeysByTitle[t];
+
+  const data = await ecwidFetchJSON("/store_extrafields/customers", { method: "GET" });
+  const items = Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : [];
+  const found = items.find(f => f && typeof f.title === "string" && f.title.trim().toLowerCase() === t.toLowerCase());
+  if (found && found.key) {
+    WHOLESALE_CACHE.extraFieldKeysByTitle[t] = found.key;
+    return found.key;
+  }
+
+  const created = await ecwidFetchJSON("/store_extrafields/customers", {
+    method: "POST",
+    body: JSON.stringify({ title: t })
+  });
+  const key = created && created.key;
+  if (key) {
+    WHOLESALE_CACHE.extraFieldKeysByTitle[t] = key;
+    return key;
+  }
+  return null;
+}
+
+function buildCustomerUpdatePayload(values) {
+  const extraFields = {};
+  const ef = WHOLESALE_CACHE.extraFieldKeysByTitle;
+  if (ef["Cell Phone"] && values.cellPhone) extraFields[ef["Cell Phone"]] = String(values.cellPhone);
+  if (ef["Tax ID"] && values.taxId) extraFields[ef["Tax ID"]] = String(values.taxId);
+  if (ef["Referral Source"] && values.referralSource) extraFields[ef["Referral Source"]] = String(values.referralSource);
+
+  const payload = {
+    email: values.email,
+    acceptMarketing: !!values.acceptMarketing,
+    billingPerson: {
+      name: values.name || "",
+      companyName: values.companyName || "",
+      countryCode: (values.countryCode || "").toUpperCase(),
+      postalCode: values.postalCode || "",
+      phone: values.phone || ""
+    },
+    extraFields: extraFields
+  };
+
+  if (WHOLESALE_CACHE.groupId) {
+    payload.customerGroupId = WHOLESALE_CACHE.groupId;
+  }
+  if (values.taxExempt === true) {
+    payload.taxExempt = true;
+  }
+  return payload;
 }
 
 async function getWholesaleStatus(customerId) {
-  const { storeId } = await waitForEcwidAndTokens();
-  const base = normalizeWholesaleBase(WHOLESALE_API_BASE);
-  const url = `${base}/api/wholesale/status?customerId=${encodeURIComponent(customerId)}&storeId=${encodeURIComponent(storeId)}`;
-  const res = await fetch(url, { method: "GET" });
-  if (!res.ok) throw new Error(`Wholesale status request failed: ${res.status}`);
-  return res.json();
+  const targetGroupId = await resolveWholesaleGroupId().catch(() => null);
+  const customer = await ecwidFetchJSON(`/customers/${encodeURIComponent(customerId)}`, { method: "GET" });
+
+  const ids = Array.isArray(customer && customer.customerGroupIds)
+    ? customer.customerGroupIds
+    : (customer && typeof customer.customerGroupId !== "undefined")
+      ? [customer.customerGroupId]
+      : [];
+  let isApproved = false;
+
+  if (targetGroupId != null) {
+    isApproved = ids.includes(targetGroupId);
+  } else {
+    const groupName = (customer && customer.customerGroup && customer.customerGroup.name) || "";
+    isApproved = groupName.toLowerCase() === getWholesaleGroupName().toLowerCase();
+  }
+
+  return {
+    isWholesaleApproved: !!isApproved,
+    groupId: targetGroupId || null,
+    groupName: getWholesaleGroupName()
+  };
 }
 
-async function postWholesaleRegistration(payload) {
-  const { storeId } = await waitForEcwidAndTokens();
-  const base = normalizeWholesaleBase(WHOLESALE_API_BASE);
-  const url = `${base}/api/wholesale/register`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ storeId, ...(payload || {}) })
+async function postWholesaleRegistration(values) {
+  await Promise.all([
+    ensureExtraFieldKeyByTitle("Cell Phone"),
+    ensureExtraFieldKeyByTitle("Tax ID"),
+    ensureExtraFieldKeyByTitle("Referral Source"),
+    resolveWholesaleGroupId()
+  ]);
+
+  const payload = buildCustomerUpdatePayload(values);
+  const json = await ecwidFetchJSON(`/customers/${encodeURIComponent(values.customerId)}`, {
+    method: "PUT",
+    body: JSON.stringify(payload)
   });
-  if (!res.ok) throw new Error(`Wholesale registration failed: ${res.status}`);
-  return res.json();
+  return json;
 }
 
 /*****************************************************************************/

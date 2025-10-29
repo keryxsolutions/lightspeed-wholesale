@@ -19,5 +19,8 @@
 # backups
 *~
 
+# mac os files
+.DS_Store
+
 # old files
 /old/
