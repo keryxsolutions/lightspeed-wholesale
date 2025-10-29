@@ -237,6 +237,10 @@ async function postWholesaleRegistration(values) {
   return json;
 }
 
+function ecwidSubmitWholesaleRegistration(values) {
+  return postWholesaleRegistration(values);
+}
+
 /*****************************************************************************/
 // Wholesale Price Visibility
 /*****************************************************************************/
@@ -1175,8 +1179,8 @@ function attachWholesaleRegistrationHandlers(root, customer) {
     try {
       updateWholesaleSubmitState({ submitting: true, statusText: "Submitting registration…" });
       trackWholesaleEvent("wholesale_registration_submit", { acceptMarketing: !!values.acceptMarketing });
-      // Submit to backend contract
-      await postWholesaleRegistration({
+      // Submit via Ecwid REST
+      await ecwidSubmitWholesaleRegistration({
         customerId: values.customerId,
         email: values.email,
         name: values.name,
@@ -1193,7 +1197,7 @@ function attachWholesaleRegistrationHandlers(root, customer) {
       // Confirm approval then refresh/redirect
       let approved = false;
       try {
-        const status = await getWholesaleStatus(values.customerId);
+        const status = await ecwidGetWholesaleStatus(values.customerId);
         approved = !!(status && status.isWholesaleApproved);
       } catch (_) {}
 
