@@ -42,6 +42,20 @@ function removeNodeById(id) {
   if (el) el.remove();
 }
 
+const WHOLESALE_TELEMETRY = { sent: new Set(), max: 200 };
+function trackWholesaleEvent(name, props) {
+  try {
+    const p = props || {};
+    const route = { path: window.location.pathname || "", hash: window.location.hash || "" };
+    const key = name + "|" + JSON.stringify({ ...p, route });
+    if (WHOLESALE_TELEMETRY.sent.has(key)) return;
+    WHOLESALE_TELEMETRY.sent.add(key);
+    if (WHOLESALE_TELEMETRY.sent.size > WHOLESALE_TELEMETRY.max) { WHOLESALE_TELEMETRY.sent.clear(); }
+    console.log("[WholesaleTelemetry]", name, p);
+  } catch (_) {}
+}
+try { window.trackWholesaleEvent = trackWholesaleEvent; } catch (_) {}
+
 Ecwid.OnAPILoaded.add(function () {
   // Initialize robust wholesale price visibility logic
   initializeWholesalePriceVisibility();
@@ -775,6 +789,15 @@ async function renderWholesaleBanner({ customer, onReg }) {
   el.innerHTML =
     '<span>Register to access prices and place an order.</span> ' +
     `<a href="${toWholesaleRegistrationPath()}" style="color:#fff;text-decoration:underline;margin-left:8px;">Register</a>`;
+
+  trackWholesaleEvent("wholesale_banner_shown", {});
+  if (!el.dataset.telemetryClick) {
+    const a = el.querySelector('a[href]');
+    if (a) {
+      a.addEventListener("click", function () { trackWholesaleEvent("wholesale_banner_click", {}); });
+      el.dataset.telemetryClick = "1";
+    }
+  }
 }
 
 function forceHidePricesOnRegistration(on) {
@@ -907,6 +930,8 @@ function renderWholesaleRegistrationPageShell(customer) {
     '</form>'
   ].join("");
 
+  if (!root.dataset.telemetryView) { trackWholesaleEvent("wholesale_registration_view", {}); root.dataset.telemetryView = "1"; }
+
   attachWholesaleRegistrationHandlers(root, customer);
 }
 
@@ -1030,6 +1055,7 @@ function attachWholesaleRegistrationHandlers(root, customer) {
 
     try {
       updateWholesaleSubmitState({ submitting: true, statusText: "Submitting registration…" });
+      trackWholesaleEvent("wholesale_registration_submit", { acceptMarketing: !!values.acceptMarketing });
       // Submit to backend contract
       await postWholesaleRegistration({
         customerId: values.customerId,
@@ -1055,12 +1081,14 @@ function attachWholesaleRegistrationHandlers(root, customer) {
       if (approved) {
         try { if (typeof window.triggerWholesaleVisibilityRefresh === "function") window.triggerWholesaleVisibilityRefresh(); } catch (_) {}
         updateWholesaleSubmitState({ submitting: false, statusText: "Success. Redirecting…" });
+        trackWholesaleEvent("wholesale_registration_success", {});
         setTimeout(function () { window.location.href = "/products"; }, 400);
       } else {
         updateWholesaleSubmitState({ submitting: false, statusText: "Registration submitted. Awaiting approval." });
       }
     } catch (err) {
       console.warn("Wholesale Reg: submission failed", err);
+      trackWholesaleEvent("wholesale_registration_failure", {});
       updateWholesaleSubmitState({ submitting: false, statusText: "" });
       const errSummary = document.getElementById("wr-error-summary");
       if (errSummary) { errSummary.textContent = "Submission failed. Please try again."; errSummary.style.display = "block"; }

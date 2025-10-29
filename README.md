@@ -1,100 +1,125 @@
-# Lightspeed eCom Custom App - Wholesale & Category Banner
+# Lightspeed eCom Custom App — Wholesale, Category Banner, Product Tags, Registration
 
-This custom app provides two main functionalities:
-1. **Wholesale Price Control**: Shows/hides prices based on customer login status
-2. **Category Banner with Text Overlay**: Transforms category pages into full-width banners with overlaid description text
+This custom app enhances a Lightspeed (Ecwid) storefront with:
+
+- Wholesale price visibility control (hide for guests, show for logged-in)
+- Category banner with text overlay (full-width image + description overlay)
+- Product tag display from product attributes (TAGS)
+- Wholesale registration flow (banner + /wholesale-registration page shell)
+
+All functionality runs on the storefront. Category images and product attributes are fetched via Ecwid REST using the app public token resolved at runtime. The wholesale registration flow optionally calls your backend if configured.
 
 ## Files Overview
 
-- `app.js` - Main JavaScript file (hosted at: https://keryxsolutions.github.io/lightspeed-wholesale/app.js)
-- `app.css` - CSS styles file (request Lightspeed to add: https://keryxsolutions.github.io/lightspeed-wholesale/app.css)
-- `index.html` - Test interface for API functions
+- `app.js` — Main JavaScript (hosted: https://keryxsolutions.github.io/lightspeed-wholesale/app.js)
+- `app.css` — CSS styles (request Lightspeed to add: https://keryxsolutions.github.io/lightspeed-wholesale/app.css)
+- `index.html` — Local test interface for API functions
 
-## Category Banner Setup
+## Category Banner
 
 ### Prerequisites
-1. **Lightspeed eCom store design settings:**
-   - Navigate to: `Design > Category name position`
-   - Select: **"Hide category names"** (essential for banner effect)
+- Design → Category name position → Select: **Hide category names** (required for banner effect)
+- Category must have both an **image** and **description**
+- Image recommended: 1920×400px or larger
 
-2. **Category requirements:**
-   - Category must have both an **image** and **description** set
-   - Image should be high-resolution (recommended: 1920x400px or larger)
-   - Description supports HTML formatting (bold, italic, etc.)
+### Behavior
+- On category pages, the script fetches category data via REST and inserts a `.category-banner` wrapper inside `.ecwid-productBrowser-head`
+- The category image fills the banner; the existing description becomes the overlay (`.category-banner-text`)
+- Fonts and CSS are loaded from `app.css` and Google Fonts
 
 ### Current Status
-- ✅ JavaScript functionality: Complete and integrated into app.js
-- ⏳ CSS file: Created but needs to be linked by Lightspeed support
-- 🔄 Fallback: CSS is dynamically loaded via JavaScript until external CSS is linked
+- ✅ JS complete in `app.js`
+- ⏳ CSS hosted and auto-injected; request Lightspeed to set `customCssUrl` for best performance
+- 🔄 Fallback: CSS still injected by JS if the external CSS isn’t added in app config
 
-### Request for Lightspeed Support
-Contact Lightspeed API Support to add CSS URL to your custom app:
-- **App ID**: [Your App ID]
-- **Store ID**: [Your Store ID] 
-- **Request**: Add `customCssUrl`: `https://keryxsolutions.github.io/lightspeed-wholesale/app.css`
+### Request to Lightspeed Support
+Provide to support:
+- App ID: [Your App ID]
+- Store ID: [Your Store ID]
+- Request: Add `customCssUrl` → `https://keryxsolutions.github.io/lightspeed-wholesale/app.css`
 
 ### Expected Results
-After setup, category pages will display:
-- Full-width banner image (400px height, responsive)
-- Centered text overlay with semi-transparent background
-- Custom font: "Cormorant Garamond" at 32px
-- Preserved HTML formatting (bold, italic)
+- Full-width banner image (approx. 400px height, responsive)
+- Centered text overlay (preserves HTML formatting)
 - Hidden default category titles
-- Mobile responsive design
-
-### Font Specification
-```css
-font-family: "Cormorant Garamond", system-ui, "Segoe UI", Roboto, Arial, sans-serif;
-font-size: 32px;
-```
-
-### CSS Features
-- Full viewport width banner effect
-- Responsive breakpoints: 1024px, 768px, 480px
-- Text overlay with backdrop blur effect
-- Automatic Google Fonts loading
-- Cross-theme compatibility
-- Fallback inline styles if external CSS fails
+- Mobile responsive typography
 
 ### Troubleshooting
+- Banner not appearing: Ensure category has image; verify design setting is “Hide category names”
+- Inspect console for “Category Banner” warnings
 
-**Banner not appearing:**
-1. Check browser console for errors
-2. Verify category has both image and description
-3. Ensure "Hide category names" is selected in design settings
-4. Check if category description contains actual text content
+## Product Tags (from TAGS attribute)
 
-**Text formatting issues:**
-1. Use HTML in category description: `<strong>Bold</strong>` `<em>Italic</em>`
-2. Font will fallback to system fonts if Google Fonts fail to load
-3. Text color is fixed to white with text-shadow for visibility
+### Prerequisites
+- Admin → Product Types → Add attribute:
+  - Name: “Tags” (or similar)
+  - Type: `TAGS`
+  - Display: `DESCR` (visible on storefront)
+- Assign tag values on products for testing
 
-**Mobile display issues:**
-1. Banner automatically adjusts height on mobile devices
-2. Text size scales down responsively
-3. Overlay padding adjusts for smaller screens
+### Behavior
+- On product pages, the app fetches the product via REST and reads attributes
+- If a TAGS attribute exists, it injects a `.product-details-module__tags` block below `.product-details-module__content`
+- Renders: `Tags: tag1, tag2, …` with clickable links
 
-### Deployment Checklist
-- [ ] Upload updated app.js to GitHub Pages
-- [ ] Upload app.css to GitHub Pages  
-- [ ] Request CSS URL addition from Lightspeed support
-- [ ] Set category name position to "Hide category names"
-- [ ] Test with categories that have both image and description
-- [ ] Verify mobile responsiveness
-- [ ] Check cross-browser compatibility
+### Limitations (current)
+- Tag links are placeholders (alert/redirect to search)
+- Full tag pages and server-side filtering are not implemented in this app build
 
-### Development Notes
-- Script uses MutationObserver for dynamic content detection
-- Multiple selector fallbacks for theme compatibility
-- Error handling and logging for debugging
-- Graceful fallbacks if external resources fail to load
-- Preserves existing wholesale functionality
+### Troubleshooting
+- Verify the product has TAGS values
+- Check console for “Tag System” warnings
 
-## Wholesale Functionality
-The app continues to provide wholesale price control:
-- Logged-in users: Prices and buy buttons visible
-- Guest users: Prices and buy buttons hidden
-- CSS safety net prevents dynamic price display
+## Wholesale Price Visibility
+
+### Behavior
+- Guest users: prices, buy buttons, and price filter are hidden
+- Logged-in customers: prices and buy buttons are shown
+- The app updates `ec.storefront.config` and injects/removes a safety CSS tag (`#wholesale-hide-css`)
+
+### Notes
+- Assumes product prices are turned OFF by default in design settings
+- Works across SPA navigation via `Ecwid.OnPageLoaded`
+
+## Wholesale Registration Flow (optional backend)
+
+### Features
+- A sticky banner prompts guests and non-approved users to register
+- Visiting `/wholesale-registration` renders a page shell with a form
+- On submit, the app posts to your backend and then checks approval status
+
+### Backend Contract
+Configure a backend and expose:
+- `GET  /api/wholesale/status?customerId=...&storeId=...` → `{ isWholesaleApproved: boolean }`
+- `POST /api/wholesale/register` with JSON body containing: `customerId, email, name, companyName, countryCode, postalCode, phone, cellPhone, taxId, referralSource, acceptMarketing, storeId`
+
+Expose the base URL before the script runs:
+
+```html
+<script>
+  window.WHOLESALE_API_BASE = "https://your-backend.example.com";
+</script>
+<script src="https://keryxsolutions.github.io/lightspeed-wholesale/app.js"></script>
+```
+
+Without a backend, the banner and page shell still render, but submission won’t complete.
+
+## Deployment Checklist
+- [ ] Host/update `app.js` on GitHub Pages
+- [ ] Host/update `app.css` on GitHub Pages
+- [ ] Ask Lightspeed support to set `customCssUrl` to `app.css`
+- [ ] Set “Hide category names” in design settings
+- [ ] Ensure categories have image + description
+- [ ] Add TAGS attribute to Product Types and assign tags on test products
+- [ ] (Optional) Configure backend and set `window.WHOLESALE_API_BASE`
+- [ ] Test on category and product pages
 
 ## Testing
-Use the included `index.html` for API testing and order creation functionality.
+- See `TESTING_STRATEGY.md` for step-by-step validation of banner, tags, wholesale visibility, and registration flow
+- Use `index.html` for local API tests as needed
+
+## Development Notes
+- SPA-aware via `Ecwid.OnPageLoaded`
+- Uses `Ecwid.getOwnerId()` and `Ecwid.getAppPublicToken(clientId)` to call REST securely on the storefront
+- Defensive DOM lookups and idempotent injection for stability
+- Error logging prefixed with “Category Banner”, “Tag System”, and “Wholesale Reg” for quick triage

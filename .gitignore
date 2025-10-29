@@ -1,0 +1,23 @@
+# dependencies
+/node_modules
+
+# logs
+/logs
+
+# build artifacts
+/dist
+
+# testing
+/coverage
+
+# IDE
+.vscode/
+
+# misc
+/.idea/
+
+# backups
+*~
+
+# old files
+/old/
