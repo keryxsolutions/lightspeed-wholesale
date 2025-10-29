@@ -120,7 +120,11 @@ async function ecwidFetchJSON(path, options) {
     init.headers || {}
   );
   const res = await fetch(url, Object.assign({}, init, { headers }));
-  if (!res.ok) throw new Error(`Ecwid API error ${res.status} for ${path}`);
+  if (!res.ok) {
+    const err = new Error(`Ecwid API error ${res.status} for ${path}`);
+    try { err.status = res.status; } catch (_) {}
+    throw err;
+  }
   return res.json();
 }
 
@@ -211,6 +215,10 @@ async function getWholesaleStatus(customerId) {
     groupId: targetGroupId || null,
     groupName: getWholesaleGroupName()
   };
+}
+
+function ecwidGetWholesaleStatus(customerId) {
+  return getWholesaleStatus(customerId);
 }
 
 async function postWholesaleRegistration(values) {
@@ -809,7 +817,7 @@ async function handleWholesaleRegistrationOnPage(page) {
     }
 
     // Non-registration routes: redirect logged-in non-wholesale users
-    if (customer && typeof getWholesaleStatus === "function") {
+    if (customer && typeof ecwidGetWholesaleStatus === "function") {
       // Use cache when available
       if (
         WHOLESALE_STATUS_CACHE.customerId === customer.id &&
@@ -821,7 +829,12 @@ async function handleWholesaleRegistrationOnPage(page) {
         return;
       }
 
-      const status = await getWholesaleStatus(customer.id).catch(() => null);
+      const status = await ecwidGetWholesaleStatus(customer.id).catch((e) => {
+        if (e && (e.status === 401 || e.status === 403)) {
+          console.warn("Ecwid token lacks required scopes");
+        }
+        return null;
+      });
       if (status && typeof status.isWholesaleApproved === "boolean") {
         WHOLESALE_STATUS_CACHE.customerId = customer.id;
         WHOLESALE_STATUS_CACHE.isWholesaleApproved = !!status.isWholesaleApproved;
@@ -844,14 +857,19 @@ async function renderWholesaleBanner({ customer, onReg }) {
 
   // Show for guests; for logged-in users only if not wholesale-approved
   let shouldShow = !customer;
-  if (customer && typeof getWholesaleStatus === "function") {
+  if (customer && typeof ecwidGetWholesaleStatus === "function") {
     if (
       WHOLESALE_STATUS_CACHE.customerId === customer.id &&
       WHOLESALE_STATUS_CACHE.isWholesaleApproved != null
     ) {
       shouldShow = !WHOLESALE_STATUS_CACHE.isWholesaleApproved;
     } else {
-      const status = await getWholesaleStatus(customer.id).catch(() => null);
+      const status = await ecwidGetWholesaleStatus(customer.id).catch((e) => {
+        if (e && (e.status === 401 || e.status === 403)) {
+          console.warn("Ecwid token lacks required scopes");
+        }
+        return null;
+      });
       if (status && typeof status.isWholesaleApproved === "boolean") {
         WHOLESALE_STATUS_CACHE.customerId = customer.id;
         WHOLESALE_STATUS_CACHE.isWholesaleApproved = !!status.isWholesaleApproved;
@@ -1192,7 +1210,14 @@ function attachWholesaleRegistrationHandlers(root, customer) {
       trackWholesaleEvent("wholesale_registration_failure", {});
       updateWholesaleSubmitState({ submitting: false, statusText: "" });
       const errSummary = document.getElementById("wr-error-summary");
-      if (errSummary) { errSummary.textContent = "Submission failed. Please try again."; errSummary.style.display = "block"; }
+      if (errSummary) {
+        if (err && (err.status === 401 || err.status === 403)) {
+          errSummary.textContent = "Store authorization is not available. Please contact support.";
+        } else {
+          errSummary.textContent = (err && err.message) || "Submission failed. Please try again.";
+        }
+        errSummary.style.display = "block";
+      }
     }
   });
 }
