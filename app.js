@@ -812,7 +812,6 @@ function renderWholesaleRegistrationPageShell(customer) {
   if (!root) {
     root = document.createElement("div");
     root.id = "wholesale-registration-root";
-    // Minimal inline spacing for M2
     root.style.background = "#fff";
     root.style.border = "1px solid #eee";
     root.style.borderRadius = "8px";
@@ -822,9 +821,249 @@ function renderWholesaleRegistrationPageShell(customer) {
   }
 
   const email = (customer && customer.email) || "";
+  const signedInBlock = email
+    ? `<div style="margin-bottom:8px;color:#555;">Signed in as: <strong>${email}</strong></div>`
+    : '<div style="margin-bottom:8px;color:#b00;">Please sign in to continue with wholesale registration.</div>';
+
   root.innerHTML = [
     '<h1 style="margin:0 0 8px;">Wholesale Registration</h1>',
-    email ? `<div style="margin-bottom:8px;color:#555;">Signed in as: <strong>${email}</strong></div>` : "",
-    '<div>This is the registration page. The full form will appear here.</div>'
+    signedInBlock,
+    '<div id="wr-error-summary" role="alert" aria-live="polite" style="display:none;margin-bottom:8px;color:#b00;"></div>',
+    '<form id="wholesale-reg-form" novalidate>',
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">',
+        // Email (readonly)
+        '<label style="grid-column:1/-1;display:block;">',
+          '<span>Email (read-only)</span><br>',
+          `<input id="wr-email" type="email" value="${email}" readonly disabled style="width:100%;padding:8px;">`,
+        '</label>',
+
+        // Name (required)
+        '<label style="display:block;">',
+          '<span>Name *</span><br>',
+          '<input id="wr-name" type="text" style="width:100%;padding:8px;" aria-invalid="false">',
+          '<div id="err-wr-name" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
+        '</label>',
+
+        // Company (required)
+        '<label style="display:block;">',
+          '<span>Company *</span><br>',
+          '<input id="wr-company" type="text" style="width:100%;padding:8px;" aria-invalid="false">',
+          '<div id="err-wr-company" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
+        '</label>',
+
+        // Country (required, ISO 2)
+        '<label style="display:block;">',
+          '<span>Country (ISO 2) *</span><br>',
+          '<input id="wr-country" type="text" maxlength="2" style="width:100%;padding:8px;text-transform:uppercase;" aria-invalid="false" placeholder="US">',
+          '<div id="err-wr-country" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
+        '</label>',
+
+        // Postal code (required)
+        '<label style="display:block;">',
+          '<span>Postal Code *</span><br>',
+          '<input id="wr-postal" type="text" style="width:100%;padding:8px;" aria-invalid="false">',
+          '<div id="err-wr-postal" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
+        '</label>',
+
+        // Phone (required)
+        '<label style="display:block;">',
+          '<span>Phone *</span><br>',
+          '<input id="wr-phone" type="tel" style="width:100%;padding:8px;" aria-invalid="false" placeholder="+1 555-555-5555">',
+          '<div id="err-wr-phone" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
+        '</label>',
+
+        // Cell phone (optional)
+        '<label style="display:block;">',
+          '<span>Cell Phone (optional)</span><br>',
+          '<input id="wr-cell" type="tel" style="width:100%;padding:8px;" aria-invalid="false">',
+          '<div id="err-wr-cell" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
+        '</label>',
+
+        // Tax ID (required)
+        '<label style="display:block;">',
+          '<span>Tax ID *</span><br>',
+          '<input id="wr-taxid" type="text" style="width:100%;padding:8px;" aria-invalid="false">',
+          '<div id="err-wr-taxid" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
+        '</label>',
+
+        // Referral (optional)
+        '<label style="display:block;">',
+          '<span>How did you hear about us? (optional)</span><br>',
+          '<input id="wr-referral" type="text" style="width:100%;padding:8px;" aria-invalid="false" placeholder="Search Engine, Friend, ...">',
+          '<div id="err-wr-referral" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
+        '</label>',
+
+        // Marketing consent (checkbox)
+        '<label style="grid-column:1/-1;display:flex;align-items:center;gap:8px;">',
+          '<input id="wr-marketing" type="checkbox">',
+          '<span>Sign me up for the newsletter</span>',
+        '</label>',
+      '</div>',
+
+      '<div style="margin-top:12px;display:flex;gap:8px;align-items:center;">',
+        '<button id="wr-submit" type="submit" style="padding:10px 14px;background:#0b5fff;color:#fff;border:none;border-radius:4px;font-weight:600;cursor:pointer;">Submit Registration</button>',
+        '<span id="wr-status" style="color:#555;"></span>',
+      '</div>',
+    '</form>'
   ].join("");
+
+  attachWholesaleRegistrationHandlers(root, customer);
+}
+
+function validateWholesaleRegistrationValues(values) {
+  const errors = {};
+  function req(v) { return !!(v && String(v).trim()); }
+  const phoneRe = /^[+0-9()\-\s]{7,}$/;
+  const iso2 = /^[A-Za-z]{2}$/;
+
+  if (!req(values.name)) errors.name = "Name is required";
+  if (!req(values.companyName)) errors.companyName = "Company is required";
+  if (!req(values.countryCode) || !iso2.test(values.countryCode)) errors.countryCode = "Country must be a 2-letter code";
+  if (!req(values.postalCode)) errors.postalCode = "Postal code is required";
+  if (!req(values.phone) || !phoneRe.test(values.phone)) errors.phone = "Enter a valid phone number";
+  if (!req(values.taxId)) errors.taxId = "Tax ID is required";
+  return errors;
+}
+
+function updateWholesaleSubmitState({ submitting, statusText }) {
+  const btn = document.getElementById("wr-submit");
+  const status = document.getElementById("wr-status");
+  if (btn) btn.disabled = !!submitting;
+  if (btn) btn.textContent = submitting ? "Submitting…" : "Submit Registration";
+  if (status) status.textContent = statusText || "";
+}
+
+function showFieldError(id, message) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = message || "";
+  const inputMap = {
+    "err-wr-name": "wr-name",
+    "err-wr-company": "wr-company",
+    "err-wr-country": "wr-country",
+    "err-wr-postal": "wr-postal",
+    "err-wr-phone": "wr-phone",
+    "err-wr-taxid": "wr-taxid",
+  };
+  const inputId = inputMap[id];
+  if (inputId) {
+    const input = document.getElementById(inputId);
+    if (input) input.setAttribute("aria-invalid", message ? "true" : "false");
+  }
+}
+
+function clearFieldErrors() {
+  [
+    "err-wr-name",
+    "err-wr-company",
+    "err-wr-country",
+    "err-wr-postal",
+    "err-wr-phone",
+    "err-wr-taxid",
+    "err-wr-referral",
+    "err-wr-cell",
+  ].forEach((id) => showFieldError(id, ""));
+  const errSummary = document.getElementById("wr-error-summary");
+  if (errSummary) { errSummary.textContent = ""; errSummary.style.display = "none"; }
+}
+
+function attachWholesaleRegistrationHandlers(root, customer) {
+  const form = root && root.querySelector && root.querySelector("#wholesale-reg-form");
+  if (!form) return;
+
+  // Live validation to toggle button state
+  const requiredIds = ["wr-name","wr-company","wr-country","wr-postal","wr-phone","wr-taxid"];
+  function computeValues() {
+    return {
+      email: (customer && customer.email) || "",
+      name: document.getElementById("wr-name").value.trim(),
+      companyName: document.getElementById("wr-company").value.trim(),
+      countryCode: document.getElementById("wr-country").value.trim().toUpperCase(),
+      postalCode: document.getElementById("wr-postal").value.trim(),
+      phone: document.getElementById("wr-phone").value.trim(),
+      cellPhone: document.getElementById("wr-cell").value.trim(),
+      taxId: document.getElementById("wr-taxid").value.trim(),
+      referralSource: document.getElementById("wr-referral").value.trim(),
+      acceptMarketing: !!document.getElementById("wr-marketing").checked,
+      customerId: customer && customer.id,
+    };
+  }
+
+  function refreshSubmitEnabled() {
+    const v = computeValues();
+    const errs = validateWholesaleRegistrationValues(v);
+    const btn = document.getElementById("wr-submit");
+    if (btn) btn.disabled = Object.keys(errs).length > 0 || !v.customerId;
+  }
+
+  requiredIds.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("input", refreshSubmitEnabled);
+  });
+
+  refreshSubmitEnabled();
+
+  form.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    clearFieldErrors();
+
+    const values = computeValues();
+    const errs = validateWholesaleRegistrationValues(values);
+    if (Object.keys(errs).length > 0) {
+      // Show inline errors and summary
+      if (errs.name) showFieldError("err-wr-name", errs.name);
+      if (errs.companyName) showFieldError("err-wr-company", errs.companyName);
+      if (errs.countryCode) showFieldError("err-wr-country", errs.countryCode);
+      if (errs.postalCode) showFieldError("err-wr-postal", errs.postalCode);
+      if (errs.phone) showFieldError("err-wr-phone", errs.phone);
+      if (errs.taxId) showFieldError("err-wr-taxid", errs.taxId);
+      const errSummary = document.getElementById("wr-error-summary");
+      if (errSummary) { errSummary.textContent = "Please correct the highlighted fields."; errSummary.style.display = "block"; }
+      return;
+    }
+
+    if (!values.customerId) {
+      const errSummary = document.getElementById("wr-error-summary");
+      if (errSummary) { errSummary.textContent = "Please sign in before submitting the registration."; errSummary.style.display = "block"; }
+      return;
+    }
+
+    try {
+      updateWholesaleSubmitState({ submitting: true, statusText: "Submitting registration…" });
+      // Submit to backend contract
+      await postWholesaleRegistration({
+        customerId: values.customerId,
+        email: values.email,
+        name: values.name,
+        companyName: values.companyName,
+        countryCode: values.countryCode,
+        postalCode: values.postalCode,
+        phone: values.phone,
+        cellPhone: values.cellPhone,
+        taxId: values.taxId,
+        referralSource: values.referralSource,
+        acceptMarketing: values.acceptMarketing,
+      });
+
+      // Confirm approval then refresh/redirect
+      let approved = false;
+      try {
+        const status = await getWholesaleStatus(values.customerId);
+        approved = !!(status && status.isWholesaleApproved);
+      } catch (_) {}
+
+      if (approved) {
+        try { if (typeof window.triggerWholesaleVisibilityRefresh === "function") window.triggerWholesaleVisibilityRefresh(); } catch (_) {}
+        updateWholesaleSubmitState({ submitting: false, statusText: "Success. Redirecting…" });
+        setTimeout(function () { window.location.href = "/products"; }, 400);
+      } else {
+        updateWholesaleSubmitState({ submitting: false, statusText: "Registration submitted. Awaiting approval." });
+      }
+    } catch (err) {
+      console.warn("Wholesale Reg: submission failed", err);
+      updateWholesaleSubmitState({ submitting: false, statusText: "" });
+      const errSummary = document.getElementById("wr-error-summary");
+      if (errSummary) { errSummary.textContent = "Submission failed. Please try again."; errSummary.style.display = "block"; }
+    }
+  });
 }

@@ -1,0 +1,206 @@
+# Lightspeed eCom (Ecwid) – Wholesale Registration Flow – PRD
+
+Version: 1.0
+Owner: Keryx Solutions
+Status: Draft
+Date: 2025-10-28
+
+## 1) Summary
+Enable a registration flow that gates wholesale pricing to customers who have completed a registration form and are assigned to the "Wholesale Customer" customer group in Ecwid. The storefront experience should:
+- Redirect logged-in, non-wholesale users to a registration page.
+- Show a global banner on other pages linking to registration.
+- Capture required business details and newsletter consent.
+- On success, assign the user to the Wholesale Customer group and redirect to `/products`.
+- Use existing price-visibility code; add targeted overrides on the registration page so prices remain hidden until approval/assignment is complete.
+
+Reference docs: https://docs.ecwid.com/storefronts (capabilities to be validated against Ecwid REST/Admin APIs)
+
+## 2) Background & Current State
+- The repository currently provides:
+  - `initializeWholesalePriceVisibility` to show/hide prices. Today it toggles based on logged-in status only (no customer-group check). See `app.js` lines ~54–147.
+  - Category banner feature. See `app.js` lines ~149–339 and `app.css`.
+  - Product tag system stubs. See `app.js` lines ~340–549.
+- Design note: Prices are hidden by default in theme settings; the script then shows them for logged-in users.
+
+## 3) Goals
+- **Gate wholesale pricing** behind a completed registration and membership in the `Wholesale Customer` group.
+- **Seamless UX:** Detect login state and user group quickly; redirect if needed; show clear CTAs.
+- **Simple ops:** Reuse the existing app’s architecture and patterns (Ecwid SPA hooks, modular JS) and add minimal new endpoints.
+
+## 4) Non-Goals
+- Multi-step KYC, document uploads, manual approvals.
+- Complex role management; only a single wholesale group is in scope.
+- Changes to Shopify/other platforms (Ecwid only).
+
+## 5) User Stories
+- As a logged-in customer not in `Wholesale Customer`, I am redirected to a registration page to request wholesale access.
+- As a guest, I see a banner prompting me to register (after login) to access prices and ordering.
+- As an approved wholesale customer, I am not redirected and can view prices and place orders.
+- As a merchant, I want customer data saved to Ecwid and the user to be auto-assigned to the right group.
+
+## 6) UX Flow
+- **Login**
+  - User logs in via the standard Ecwid login.
+  - The app calls a backend "status" endpoint to determine if the user is in the wholesale group.
+- **Redirect**
+  - If logged in and not wholesale, redirect to `/wholesale-registration`.
+  - On the registration page, force prices/buy buttons hidden (override existing visibility logic on this page only).
+- **Banner**
+  - On all other pages (including guest state) show a banner: `Register` to access prices and place an order.
+  - The link points to `/wholesale-registration`.
+- **Registration Form**
+  - Prefill email and name from the logged-in profile.
+  - Validate required fields.
+  - Submit to backend; backend updates the Ecwid customer record and assigns the group.
+  - On success, redirect to `/products` and allow existing price-visibility logic to show prices (user is now wholesale).
+
+## 7) Functional Requirements
+- **FR-1**: Detect login and group membership on every SPA navigation (`Ecwid.OnPageLoaded`).
+- **FR-2**: If logged in and not wholesale, hard-redirect to `/wholesale-registration`.
+- **FR-3**: Render a persistent banner on all pages except registration, with link text: `Register` to access prices and place an order.
+- **FR-4**: Registration form fields and mappings:
+  - Email (required, read-only) → `customer.email`
+  - Name (required) → `customer.name`
+  - Country (required) → `customer.billingAddress.countryCode` (ISO 2)
+  - Company name (required) → `customer.companyName`
+  - Postal code (required) → `customer.billingAddress.postalCode`
+  - Phone (required) → `customer.phone`
+  - Cell phone (optional) → `customer.attributes[{ name: "cellPhone", value: "..." }]`
+  - Tax ID (required) → `customer.attributes[{ name: "taxId", value: "..." }]` (use attribute for portability)
+  - How did you hear about us? (optional) → `customer.attributes[{ name: "referralSource", value: "..." }]`
+  - Newsletter signup (checkbox) → `customer.acceptMarketing` (boolean)
+- **FR-5**: On successful submit, backend assigns the customer to `Wholesale Customer` group and returns success.
+- **FR-6**: On success, front-end redirects to `/products`.
+- **FR-7**: On the registration page, prices must remain hidden (override/force-hide even if logged in).
+- **FR-8**: Resilience: If backend fails, show an inline error, do not assign the group, and stay on the registration page.
+
+## 8) Technical Design
+### 8.1 Frontend (Storefront JS)
+- Add a new module `initializeWholesaleRegistration()` in `app.js` that:
+  - Hooks `Ecwid.OnAPILoaded` and `Ecwid.OnPageLoaded`.
+  - Retrieves customer info via `Ecwid.Customer.get`.
+  - Calls backend `GET /api/wholesale/status?customerId=...` to determine `isWholesaleApproved`.
+  - Performs redirect logic and manages the banner.
+  - When route is `/wholesale-registration`, injects a registration form into the storefront container (single-page app style) and:
+    - Forces prices hidden by calling existing helpers (e.g., `setWholesaleConfig(false)` and/or CSS injection) while on this page.
+- Add CSS to `app.css` for the registration page and banner (keep styles modular and scoped).
+- Keep the existing modules as-is (price visibility, category banner, tag system). Do not break current features.
+
+### 8.2 Backend (Secure Admin Operations)
+- Implement server-side endpoints to interact with Ecwid Admin API using the store’s private access token.
+- Endpoints (paths are illustrative; adjust to hosting):
+  - `GET /api/wholesale/status?customerId=<id>` → `{ isWholesaleApproved: boolean, groupId?: number, groupName?: string }`
+    - Logic: Fetch customer from Ecwid Admin API; check membership in the configured wholesale group.
+  - `POST /api/wholesale/register` (JSON body)
+    - Request body: `{ storeId, customerId, email, name, companyName, countryCode, postalCode, phone, cellPhone?, taxId, referralSource?, acceptMarketing }`
+    - Server actions (transactional sequence):
+      1) Update customer core fields.
+      2) Upsert custom attributes (`cellPhone`, `taxId`, `referralSource`).
+      3) Set `acceptMarketing`.
+      4) Assign to `Wholesale Customer` group.
+      5) Return success JSON.
+- Security requirements:
+  - Backend must not trust client-provided identity. It must fetch the customer by `customerId` and verify `email` matches Ecwid’s record.
+  - Require CSRF mitigation and rate-limiting.
+  - Do not expose private tokens to the browser.
+- Configuration:
+  - `WHOLESALE_GROUP_NAME` (default: `Wholesale Customer`) or `WHOLESALE_GROUP_ID`.
+  - Ecwid Admin API token per store (secure secret storage).
+
+### 8.3 Data Model Mapping (Ecwid Customer)
+- Core: `email`, `name`, `companyName`, `phone`, `acceptMarketing`.
+- Address: `billingAddress.countryCode`, `billingAddress.postalCode`.
+- Attributes (always persisted as attributes for portability): `cellPhone`, `taxId`, `referralSource`.
+- Group assignment: add user to `Wholesale Customer` group.
+
+### 8.4 Routing
+- Registration page path: `/wholesale-registration` (hash-compatible if needed).
+- Redirect target on success: `/products`.
+
+### 8.5 Banner Behavior
+- Show on all pages except `/wholesale-registration`.
+- Copy: `Register` to access prices and place an order.
+- Link: `/wholesale-registration`.
+- Hide banner for users already in the wholesale group.
+
+## 9) Validation & Error Handling
+- Client-side validation for required fields.
+- Server-side validation mirrors client rules and rejects invalid payloads.
+- Friendly inline errors on the registration form.
+- Network failures show retry option; form values preserved in memory.
+
+## 10) Accessibility & i18n
+- Form fields labelled and associated; keyboard navigable.
+- Error messages announced to screen readers.
+- Copy is centralized for future localization; default language: English.
+
+## 11) Telemetry
+- Track key events (non-PII identifiers):
+  - `wholesale_banner_shown`, `wholesale_banner_click`.
+  - `wholesale_registration_view`, `wholesale_registration_submit`, `wholesale_registration_success`, `wholesale_registration_failure`.
+
+## 12) Security & Privacy
+- PII submitted over HTTPS to backend only.
+- Backend verifies customer identity against Ecwid before group assignment.
+- No admin tokens in the browser; do not expose sensitive headers.
+
+## 13) Rollout Plan
+- Feature flags:
+  - `ENABLE_WHOLESALE_REGISTRATION` (front-end activation)
+  - `ENABLE_WHOLESALE_BANNER`
+- Environments: staging store → production store.
+- Backward compatible: existing price visibility remains; new code only adds redirects/banner.
+
+## 14) Acceptance Criteria
+- **AC-1**: Guest users: prices hidden; banner visible; `Register` link navigates to registration page after login.
+- **AC-2**: Logged-in non-wholesale: auto-redirect to `/wholesale-registration` on any navigation.
+- **AC-3**: On `/wholesale-registration`, prices and buy buttons remain hidden.
+- **AC-4**: Registration form saves all fields, sets `acceptMarketing` accordingly, and assigns the user to the wholesale group.
+- **AC-5**: After success, user is redirected to `/products`; prices are visible per existing logic.
+- **AC-6**: Logged-in wholesale users never see the banner and are never redirected.
+- **AC-7**: Errors are displayed inline; no partial updates leave the user in an inconsistent state.
+
+## 15) Implementation Notes (Code Organization)
+- Add a new module in `app.js`: `initializeWholesaleRegistration` containing:
+  - `checkWholesaleStatusAndRedirect`
+  - `renderRegistrationBanner`
+  - `renderRegistrationPage`
+  - `submitRegistration`
+- Keep modules separate from existing:
+  - Wholesale visibility (existing)
+  - Category banner (existing)
+  - Product tags (existing)
+- Add a scoped CSS section in `app.css` for:
+  - `.wholesale-banner`
+  - `.wholesale-registration-form` and children
+
+## 16) Open Questions
+- Is the wholesale group guaranteed to be named exactly `Wholesale Customer`, or should we use a configurable Group ID?
+- Should the merchant receive an email notification upon new wholesale registration?
+- Should tax ID be saved to a dedicated Ecwid field if present, or remain solely as a custom attribute?
+- Do we need to capture address line, city, region in addition to postal code?
+- Do we hide category prices for logged-in non-wholesale users outside the registration page as well (strict) or rely on the immediate redirect (current plan)?
+
+## 17) Risks & Mitigations
+- Admin token exposure risk → Keep tokens server-side only; never expose to browser.
+- Partial updates → Perform updates server-side in a controlled sequence; rollback or fail-fast with clear errors.
+- Group lookup failures → Cache the wholesale group ID on the backend; fallback to name lookup on cache miss.
+
+## 18) Testing Plan
+- Unit test backend handlers for valid/invalid payloads.
+- Integration test: customer without group → submit → added to group.
+- E2E test flows:
+  - Guest → login → redirect to registration → submit → `/products`.
+  - Logged-in wholesale → no redirect, no banner, prices visible.
+  - Server error → inline error; no redirect; resubmission works.
+
+## 19) Deployment Checklist
+- Backend deployed with environment variables (`WHOLESALE_GROUP_ID` or name, admin token, CORS, rate-limits).
+- Frontend script updated and hosted (GitHub Pages or app URL).
+- `app.css` updated with banner and form styles.
+- Staging verification on a non-production store.
+
+## 20) References
+- Existing code: `app.js`, `app.css`, `README.md` in this repo.
+- Ecwid Storefront docs: https://docs.ecwid.com/storefronts
+- Ecwid Customers/Admin APIs (endpoint specifics to be validated per store/app setup).
