@@ -34,7 +34,7 @@ The existing codebase (`app.js`) includes:
 ### 2.2 Design Philosophy
 - Prices are **hidden by default** in theme settings
 - JavaScript **reveals prices** for authorized users (currently all logged-in users)
-- This PRD extends the authorization to require **Wholesale Customer group membership**
+- This PRD extends the authorization to require **Wholesaler group membership**
 
 ### 2.3 Technical Foundation
 - **Platform:** Lightspeed eCom (Ecwid)
@@ -47,7 +47,7 @@ The existing codebase (`app.js`) includes:
 ## 3. Goals & Success Metrics
 
 ### 3.1 Primary Goals
-1. **Gate wholesale access** behind completed registration and Wholesale Customer group membership
+1. **Gate wholesale access** behind completed registration and Wholesaler group membership
 2. **Automate onboarding** with minimal manual intervention
 3. **Maintain existing features** without breaking price visibility, banners, or tags
 4. **Provide clear UX** with intuitive redirects and calls-to-action
@@ -167,7 +167,7 @@ The existing codebase (`app.js`) includes:
 - Login state detected via `Ecwid.Customer.get()`
 
 **Step 2: Group Membership Check**
-- System checks if user is member of "Wholesale Customer" group
+- System checks if user is member of "Wholesaler" group
 - Uses backend API endpoint: `GET /api/wholesale/status?customerId={id}`
 
 **Step 3A: Non-Wholesale User → Redirect**
@@ -222,19 +222,19 @@ The existing codebase (`app.js`) includes:
 
 **FR-1.1:** System MUST detect login state on every page load using `Ecwid.Customer.get()`
 
-**FR-1.2:** System MUST check Wholesale Customer group membership via backend API call
+**FR-1.2:** System MUST check Wholesaler group membership via backend API call
 
 **FR-1.3:** Group membership check MUST complete before rendering page content to prevent price leakage
 
 ### 6.2 Redirect Logic
 
-**FR-2.1:** If user is logged in AND not in Wholesale Customer group, system MUST redirect to `/wholesale-registration`
+**FR-2.1:** If user is logged in AND not in Wholesaler group, system MUST redirect to `/wholesale-registration`
 
 **FR-2.2:** Redirect MUST occur on every SPA navigation (`Ecwid.OnPageLoaded`)
 
 **FR-2.3:** Redirect MUST NOT occur if current page is already `/wholesale-registration`
 
-**FR-2.4:** Redirect MUST NOT occur for users in Wholesale Customer group
+**FR-2.4:** Redirect MUST NOT occur for users in Wholesaler group
 
 ### 6.3 Registration Banner
 
@@ -242,10 +242,10 @@ The existing codebase (`app.js`) includes:
 
 **FR-3.2:** Banner MUST display for:
 - Guest users (not logged in)
-- Logged-in users NOT in Wholesale Customer group
+- Logged-in users NOT in Wholesaler group
 
 **FR-3.3:** Banner MUST NOT display for:
-- Users in Wholesale Customer group
+- Users in Wholesaler group
 - Users on `/wholesale-registration` page
 
 **FR-3.4:** Banner text MUST be: "[Register](#) to access prices and place an order."
@@ -299,7 +299,7 @@ The existing codebase (`app.js`) includes:
 
 **FR-5.4:** Backend MUST update customer record with all form data
 
-**FR-5.5:** Backend MUST assign customer to "Wholesale Customer" group
+**FR-5.5:** Backend MUST assign customer to "Wholesaler" group
 
 **FR-5.6:** Backend operations MUST be atomic (all succeed or all fail)
 
@@ -590,7 +590,7 @@ Response (Success):
   {
     "isWholesaleApproved": true,
     "groupId": 98765,
-    "groupName": "Wholesale Customer"
+    "groupName": "Wholesaler"
   }
 
 Response (Not Approved):
@@ -678,8 +678,8 @@ ECWID_STORE_ID=12345678
 ECWID_ADMIN_TOKEN=secret_xxx...  # Admin API token with customer write permissions
 
 # Wholesale Configuration
-WHOLESALE_GROUP_ID=98765  # ID of "Wholesale Customer" group
-WHOLESALE_GROUP_NAME=Wholesale Customer  # Fallback if ID not available
+WHOLESALE_GROUP_ID=98765  # ID of "Wholesaler" group
+WHOLESALE_GROUP_NAME=Wholesaler  # Fallback if ID not available
 
 # Security
 CORS_ALLOWED_ORIGINS=https://yourdomain.com,https://store.ecwid.com
@@ -892,7 +892,7 @@ Add new styles for registration components:
   "phone": "+1234567890",
   "acceptMarketing": true,
   "customerGroupId": 98765,
-  "customerGroupName": "Wholesale Customer",
+  "customerGroupName": "Wholesaler",
   "billingAddress": {
     "countryCode": "US",
     "postalCode": "12345"
@@ -1299,7 +1299,7 @@ Complete the form below to access wholesale pricing and place orders.
 - [ ] Tested on staging environment
 
 **Ecwid Store:**
-- [ ] "Wholesale Customer" group created
+- [ ] "Wholesaler" group created
 - [ ] Custom attributes created (cellPhone, taxId, referralSource)
 - [ ] Test customer accounts created
 - [ ] Storefront app integration configured
@@ -1789,7 +1789,7 @@ Set up alerts for:
 ### 22.1 Glossary
 
 - **SPA:** Single Page Application (Ecwid's storefront architecture)
-- **Wholesale Customer:** Customer group in Ecwid for wholesale access
+- **Wholesaler:** Customer group in Ecwid for wholesale access
 - **Admin API:** Ecwid's REST API for server-side operations
 - **Public Token:** Ecwid API token for client-side operations (read-only)
 - **Customer Attributes:** Custom fields on customer records in Ecwid

@@ -13,7 +13,7 @@ Milestones
 
 Conventions
 - Registration route: /wholesale-registration (hash-compatible)
-- Wholesale group name: Wholesale Customer (backend resolves ID)
+- Wholesale group name: Wholesaler (backend resolves ID)
 - Backend base: window.WHOLESALE_API_BASE or default constant
 - Telemetry: console-backed helper
 
@@ -626,7 +626,7 @@ Context
 - This addendum is additive to M0/M1 already implemented; it replaces backend calls and cleans up legacy code.
 
 Conventions (updates)
-- Wholesale group name: Wholesale Customer (override via window.WHOLESALE_GROUP_NAME)
+- Wholesale group name: Wholesaler (override via window.WHOLESALE_GROUP_NAME)
 - REST base: https://app.ecwid.com/api/v3/${storeId}
 - Auth: Ecwid.getAppPublicToken(clientId) via waitForEcwidAndTokens()
 
@@ -647,7 +647,7 @@ T-12 Ecwid REST client and constants
 JavaScript
 ```JavaScript
 function getWholesaleGroupName() {
-  return (window.WHOLESALE_GROUP_NAME && String(window.WHOLESALE_GROUP_NAME)) || "Wholesale Customer";
+  return (window.WHOLESALE_GROUP_NAME && String(window.WHOLESALE_GROUP_NAME)) || "Wholesaler";
 }
 
 const WHOLESALE_CACHE = {
@@ -701,7 +701,7 @@ Acceptance
 - Returns { isWholesaleApproved, groupId?, groupName? } and never calls WHOLESALE_API_BASE.
 
 T-14 Resolve wholesale group ID by name (cache)
-- Goal: Map "Wholesale Customer" to groupId. Cache the result.
+- Goal: Map "Wholesaler" to groupId. Cache the result.
 - Target: app.js (new helper)
 
 JavaScript
@@ -897,3 +897,54 @@ Test Plan (delta)
 Done Definition (delta)
 - All REST helpers present; backend calls removed.
 - Banner/status/submit flows use Ecwid REST exclusively.
+
+---
+
+M5 — Server Proxy Integration (Admin REST via secret token)
+
+Context
+- Admin REST calls require a secret token and must be executed server-side. The storefront must never expose the secret token.
+- Introduce a minimal proxy service that wraps Ecwid Admin REST operations needed for wholesale registration.
+
+Conventions
+- WHOLESALE_API_BASE: server origin, e.g., https://api.example.com
+- Storefront → Server auth: CORS allowlist + Origin check, header `X-App-Client: <clientId>`, and `storeId` validation.
+- CSRF: SameSite cookies and a double-submit token for POST requests.
+- Server → Ecwid: use secret token with scopes: read/update customers, read/update customers_extrafields, read customer_groups.
+
+Tasks
+- P-00 Design & Security
+  - Define endpoints and security controls.
+  - Environment variables: ECWID_SECRET_TOKEN, STORE_ID, WHOLESALE_GROUP_NAME (default "Wholesaler").
+
+- P-10 Endpoint: GET /api/wholesale/status
+  - Params: customerId, storeId
+  - Logic: GET customer, resolve wholesale group by name, return `{ isWholesaleApproved, groupId?, groupName? }`.
+
+- P-20 Endpoint: POST /api/wholesale/register
+  - Body: `{ storeId, customerId, email, name, companyName, countryCode, postalCode, phone, cellPhone?, taxId, referralSource?, acceptMarketing }`
+  - Logic: ensure extra fields, resolve group ID, PUT customer update with group assignment, return `{ success: true }`.
+
+- P-30 Deployment & Config
+  - Deploy HTTPS server, set WHOLESALE_API_BASE in storefront, configure CORS allowlist.
+
+- P-31 Select serverless hosting (GitHub Pages is static-only)
+  - Choose a platform that can run server code and protect secrets (e.g., Cloudflare Workers, Netlify Functions, Vercel Functions, AWS Lambda/API Gateway).
+  - Rationale: GitHub Pages cannot execute server code or store the Ecwid secret token securely.
+
+- P-40 Frontend Integration (app.js)
+  - Prefer JS membership (`customer.membership.name`) on storefront for status.
+  - Call server `/status` only when JS data is inconclusive; call server `/register` on submit.
+  - Keep direct REST fallback for local/dev only.
+
+- P-41 Frontend hardening (server-only for private REST)
+  - Remove direct Ecwid Admin REST fallback from app.js (delete `ecwidGetWholesaleStatusDirect` and `ecwidSubmitWholesaleRegistrationDirect`).
+  - Ensure all private operations route exclusively through the server proxy.
+
+- P-50 QA & Errors
+  - Surface 401/403 with friendly messages in UI; retryable failures preserve form input.
+
+Acceptance
+- Non-public Ecwid ops (status/registration) occur via server proxy.
+- app.js uses server endpoints with membership-first logic; direct REST only as fallback.
+- Security controls verified on server (CORS, CSRF, headers, rate limits).

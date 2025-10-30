@@ -7,13 +7,13 @@ This custom app enhances a Lightspeed (Ecwid) storefront with:
 - Product tag display from product attributes (TAGS)
 - Wholesale registration flow (banner + /wholesale-registration page shell)
 
-All functionality runs on the storefront. Category images and product attributes are fetched via Ecwid REST using the app public token resolved at runtime. The wholesale registration flow optionally calls your backend if configured.
+All functionality runs on the storefront. Category images and product attributes are fetched via Ecwid REST using the app public token resolved at runtime. Uses Ecwid REST with the app public token; no custom backend required.
 
 ## Files Overview
 
 - `app.js` — Main JavaScript (hosted: https://keryxsolutions.github.io/lightspeed-wholesale/app.js)
 - `app.css` — CSS styles (request Lightspeed to add: https://keryxsolutions.github.io/lightspeed-wholesale/app.css)
-- `index.html` — Local test interface for API functions
+
 
 ## Category Banner
 
@@ -81,28 +81,28 @@ Provide to support:
 - Assumes product prices are turned OFF by default in design settings
 - Works across SPA navigation via `Ecwid.OnPageLoaded`
 
-## Wholesale Registration Flow (optional backend)
+## Wholesale Registration Flow (Ecwid REST)
 
-### Features
+Features
 - A sticky banner prompts guests and non-approved users to register
 - Visiting `/wholesale-registration` renders a page shell with a form
-- On submit, the app posts to your backend and then checks approval status
+- Submission updates the customer using Ecwid REST: ensures required Customer Extra Fields exist, updates profile, and assigns the wholesale group
+- After success, the app re-checks wholesale status, refreshes storefront config, and redirects to `/products`
 
-### Backend Contract
-Configure a backend and expose:
-- `GET  /api/wholesale/status?customerId=...&storeId=...` → `{ isWholesaleApproved: boolean }`
-- `POST /api/wholesale/register` with JSON body containing: `customerId, email, name, companyName, countryCode, postalCode, phone, cellPhone, taxId, referralSource, acceptMarketing, storeId`
+Ecwid REST Endpoints Used
+- GET `/api/v3/{storeId}/customers/{customerId}` — wholesale status check
+- GET `/api/v3/{storeId}/customer_groups` — resolve wholesale group by name
+- GET `/api/v3/{storeId}/store_extrafields/customers` — list extra fields
+- POST `/api/v3/{storeId}/store_extrafields/customers` — create extra fields (by title)
+- PUT `/api/v3/{storeId}/customers/{customerId}` — update billingPerson, acceptMarketing, extraFields, and set customerGroupId
 
-Expose the base URL before the script runs:
+Configuration Overrides
+- `window.WHOLESALE_GROUP_NAME` — wholesale group display name (default: "Wholesaler")
 
-```html
-<script>
-  window.WHOLESALE_API_BASE = "https://your-backend.example.com";
-</script>
-<script src="https://keryxsolutions.github.io/lightspeed-wholesale/app.js"></script>
-```
-
-Without a backend, the banner and page shell still render, but submission won’t complete.
+Telemetry
+- Console-backed events:
+  - `wholesale_banner_shown`, `wholesale_banner_click`
+  - `wholesale_registration_view`, `wholesale_registration_submit`, `wholesale_registration_success`, `wholesale_registration_failure`
 
 ## Deployment Checklist
 - [ ] Host/update `app.js` on GitHub Pages
@@ -111,12 +111,13 @@ Without a backend, the banner and page shell still render, but submission won’
 - [ ] Set “Hide category names” in design settings
 - [ ] Ensure categories have image + description
 - [ ] Add TAGS attribute to Product Types and assign tags on test products
-- [ ] (Optional) Configure backend and set `window.WHOLESALE_API_BASE`
+- [ ] Ensure the app public token grants customers read/write, customer groups read, and customer extra fields read/write
+- [ ] (Optional) Set window.WHOLESALE_GROUP_NAME if your group name differs from the default
 - [ ] Test on category and product pages
 
 ## Testing
-- See `TESTING_STRATEGY.md` for step-by-step validation of banner, tags, wholesale visibility, and registration flow
-- Use `index.html` for local API tests as needed
+- See `TESTING_STRATEGY.md` for step-by-step validation of banner, tags, wholesale visibility, and registration flow.
+- Status and registration actions run via Ecwid REST using the public token.
 
 ## Development Notes
 - SPA-aware via `Ecwid.OnPageLoaded`

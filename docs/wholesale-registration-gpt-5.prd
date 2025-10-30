@@ -6,11 +6,11 @@ Status: Draft
 Date: 2025-10-28
 
 ## 1) Summary
-Enable a registration flow that gates wholesale pricing to customers who have completed a registration form and are assigned to the "Wholesale Customer" customer group in Ecwid. The storefront experience should:
+Enable a registration flow that gates wholesale pricing to customers who have completed a registration form and are assigned to the "Wholesaler" customer group in Ecwid. The storefront experience should:
 - Redirect logged-in, non-wholesale users to a registration page.
 - Show a global banner on other pages linking to registration.
 - Capture required business details and newsletter consent.
-- On success, assign the user to the Wholesale Customer group and redirect to `/products`.
+- On success, assign the user to the Wholesaler group and redirect to `/products`.
 - Use existing price-visibility code; add targeted overrides on the registration page so prices remain hidden until approval/assignment is complete.
 
 Reference docs: https://docs.ecwid.com/storefronts (capabilities to be validated against Ecwid REST/Admin APIs)
@@ -23,7 +23,7 @@ Reference docs: https://docs.ecwid.com/storefronts (capabilities to be validated
 - Design note: Prices are hidden by default in theme settings; the script then shows them for logged-in users.
 
 ## 3) Goals
-- **Gate wholesale pricing** behind a completed registration and membership in the `Wholesale Customer` group.
+- **Gate wholesale pricing** behind a completed registration and membership in the `Wholesaler` group.
 - **Seamless UX:** Detect login state and user group quickly; redirect if needed; show clear CTAs.
 - **Simple ops:** Reuse the existing app’s architecture and patterns (Ecwid SPA hooks, modular JS) and add minimal new endpoints.
 
@@ -33,7 +33,7 @@ Reference docs: https://docs.ecwid.com/storefronts (capabilities to be validated
 - Changes to Shopify/other platforms (Ecwid only).
 
 ## 5) User Stories
-- As a logged-in customer not in `Wholesale Customer`, I am redirected to a registration page to request wholesale access.
+- As a logged-in customer not in `Wholesaler`, I am redirected to a registration page to request wholesale access.
 - As a guest, I see a banner prompting me to register (after login) to access prices and ordering.
 - As an approved wholesale customer, I am not redirected and can view prices and place orders.
 - As a merchant, I want customer data saved to Ecwid and the user to be auto-assigned to the right group.
@@ -69,7 +69,7 @@ Reference docs: https://docs.ecwid.com/storefronts (capabilities to be validated
   - Tax ID (required) → `customer.attributes[{ name: "taxId", value: "..." }]` (use attribute for portability)
   - How did you hear about us? (optional) → `customer.attributes[{ name: "referralSource", value: "..." }]`
   - Newsletter signup (checkbox) → `customer.acceptMarketing` (boolean)
-- **FR-5**: On successful submit, backend assigns the customer to `Wholesale Customer` group and returns success.
+- **FR-5**: On successful submit, backend assigns the customer to `Wholesaler` group and returns success.
 - **FR-6**: On success, front-end redirects to `/products`.
 - **FR-7**: On the registration page, prices must remain hidden (override/force-hide even if logged in).
 - **FR-8**: Resilience: If backend fails, show an inline error, do not assign the group, and stay on the registration page.
@@ -97,21 +97,21 @@ Reference docs: https://docs.ecwid.com/storefronts (capabilities to be validated
       1) Update customer core fields.
       2) Upsert custom attributes (`cellPhone`, `taxId`, `referralSource`).
       3) Set `acceptMarketing`.
-      4) Assign to `Wholesale Customer` group.
+      4) Assign to `Wholesaler` group.
       5) Return success JSON.
 - Security requirements:
   - Backend must not trust client-provided identity. It must fetch the customer by `customerId` and verify `email` matches Ecwid’s record.
   - Require CSRF mitigation and rate-limiting.
   - Do not expose private tokens to the browser.
 - Configuration:
-  - `WHOLESALE_GROUP_NAME` (default: `Wholesale Customer`) or `WHOLESALE_GROUP_ID`.
+  - `WHOLESALE_GROUP_NAME` (default: `Wholesaler`) or `WHOLESALE_GROUP_ID`.
   - Ecwid Admin API token per store (secure secret storage).
 
 ### 8.3 Data Model Mapping (Ecwid Customer)
 - Core: `email`, `name`, `companyName`, `phone`, `acceptMarketing`.
 - Address: `billingAddress.countryCode`, `billingAddress.postalCode`.
 - Attributes (always persisted as attributes for portability): `cellPhone`, `taxId`, `referralSource`.
-- Group assignment: add user to `Wholesale Customer` group.
+- Group assignment: add user to `Wholesaler` group.
 
 ### 8.4 Routing
 - Registration page path: `/wholesale-registration` (hash-compatible if needed).
@@ -175,7 +175,7 @@ Reference docs: https://docs.ecwid.com/storefronts (capabilities to be validated
   - `.wholesale-registration-form` and children
 
 ## 16) Open Questions
-- Is the wholesale group guaranteed to be named exactly `Wholesale Customer`, or should we use a configurable Group ID?
+- Is the wholesale group guaranteed to be named exactly `Wholesaler`, or should we use a configurable Group ID?
 - Should the merchant receive an email notification upon new wholesale registration?
 - Should tax ID be saved to a dedicated Ecwid field if present, or remain solely as a custom attribute?
 - Do we need to capture address line, city, region in addition to postal code?

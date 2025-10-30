@@ -5,16 +5,16 @@
 
 **1. Background**
 
-This feature introduces a registration process for wholesale customers on the Lightspeed e-commerce platform (Ecwid). The goal is to streamline the onboarding of wholesale customers, grant them access to wholesale pricing, and enable them to place orders. This flow will trigger after a user logs in but is not yet part of the "Wholesale Customer" group.
+This feature introduces a registration process for wholesale customers on the Lightspeed e-commerce platform (Ecwid). The goal is to streamline the onboarding of wholesale customers, grant them access to wholesale pricing, and enable them to place orders. This flow will trigger after a user logs in but is not yet part of the "Wholesaler" group.
 
 **2. User Flow**
 
 1.  A new or existing user logs into their account using the standard login process.
-2.  After successful login, the system checks if the customer belongs to the "Wholesale Customer" group.
-3.  If the customer is **not** a "Wholesale Customer," they are automatically redirected to a dedicated wholesale registration form page.
+2.  After successful login, the system checks if the customer belongs to the "Wholesaler" group.
+3.  If the customer is **not** a "Wholesaler," they are automatically redirected to a dedicated wholesale registration form page.
 4.  For users who are not yet registered as wholesale customers, a banner will be displayed on all pages (except the registration page) with a link to the registration form.
 5.  The user fills out the registration form. Many fields will be pre-populated with their existing customer data.
-6.  Upon successful submission of the form, the user is added to the "Wholesale Customer" group.
+6.  Upon successful submission of the form, the user is added to the "Wholesaler" group.
 7.  The user is then redirected to the main products page (`/products`), where they will now see wholesale pricing and have the ability to make purchases.
 
 **3. Detailed Requirements**
@@ -22,12 +22,12 @@ This feature introduces a registration process for wholesale customers on the Li
 **3.1. Login and Redirection**
 
 *   The existing customer login process will be used.
-*   After a user logs in, a check must be performed to determine if they are a member of the "Wholesale Customer" customer group.
+*   After a user logs in, a check must be performed to determine if they are a member of the "Wholesaler" customer group.
 *   If the user is not in this group, they must be immediately redirected to the wholesale registration page.
 
 **3.2. Promotional Banner**
 
-*   A banner will be displayed across the top of all pages for users who are logged in but are not in the "Wholesale Customer" group.
+*   A banner will be displayed across the top of all pages for users who are logged in but are not in the "Wholesaler" group.
 *   This banner will not be displayed on the wholesale registration page itself.
 *   The banner will contain the text: "To access wholesale prices and place an order, please <a href="[link-to-registration-page]">Register</a>."
 *   The link will direct the user to the wholesale registration page.
@@ -52,7 +52,7 @@ The registration form will be on a new, dedicated page. It must include the foll
 **3.4. Form Submission and Customer Group Assignment**
 
 *   Upon submission, the form data will be validated.
-*   If validation is successful, the system will use the Ecwid API to add the customer to the "Wholesale Customer" customer group.
+*   If validation is successful, the system will use the Ecwid API to add the customer to the "Wholesaler" customer group.
 *   Any new data from custom fields (Cell Phone, Tax ID, etc.) will be saved to the customer's profile.
 *   After being added to the group, the user will be redirected to the `/products` page.
 
@@ -67,7 +67,7 @@ The registration form will be on a new, dedicated page. It must include the foll
 
 **5. Out of Scope**
 
-*   The creation of the "Wholesale Customer" group itself. This is assumed to be set up in the Ecwid admin panel.
+*   The creation of the "Wholesaler" group itself. This is assumed to be set up in the Ecwid admin panel.
 *   The logic for displaying different prices to different customer groups.
 *   The design of the wholesale registration page beyond the specified form fields.
 *   Any approval process for wholesale registration. Submission of the form automatically grants wholesale access.

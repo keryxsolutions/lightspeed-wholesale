@@ -9,16 +9,21 @@ const clientId = "custom-app-121843055-1";
 // Config and flags
 const WHOLESALE_FLAGS = {
   ENABLE_WHOLESALE_REGISTRATION: true,
-  ENABLE_WHOLESALE_BANNER: true
+  ENABLE_WHOLESALE_BANNER: true,
 };
 
-// Backend base URL removed (M4R): using Ecwid REST directly
+// Backend API base (override via window.WHOLESALE_API_BASE)
+const WHOLESALE_API_BASE =
+  (window.WHOLESALE_API_BASE && String(window.WHOLESALE_API_BASE)) ||
+  "https://your-backend.example.com";
 
 // Route helpers (supports pathname and hash)
 function isWholesaleRegistrationPath() {
   const p = window.location.pathname || "";
   const h = window.location.hash || "";
-  return p === "/wholesale-registration" || /#\/?wholesale-registration/.test(h);
+  return (
+    p === "/wholesale-registration" || /#\/?wholesale-registration/.test(h)
+  );
 }
 function toWholesaleRegistrationPath() {
   return "/wholesale-registration";
@@ -43,15 +48,22 @@ const WHOLESALE_TELEMETRY = { sent: new Set(), max: 200 };
 function trackWholesaleEvent(name, props) {
   try {
     const p = props || {};
-    const route = { path: window.location.pathname || "", hash: window.location.hash || "" };
+    const route = {
+      path: window.location.pathname || "",
+      hash: window.location.hash || "",
+    };
     const key = name + "|" + JSON.stringify({ ...p, route });
     if (WHOLESALE_TELEMETRY.sent.has(key)) return;
     WHOLESALE_TELEMETRY.sent.add(key);
-    if (WHOLESALE_TELEMETRY.sent.size > WHOLESALE_TELEMETRY.max) { WHOLESALE_TELEMETRY.sent.clear(); }
+    if (WHOLESALE_TELEMETRY.sent.size > WHOLESALE_TELEMETRY.max) {
+      WHOLESALE_TELEMETRY.sent.clear();
+    }
     console.log("[WholesaleTelemetry]", name, p);
   } catch (_) {}
 }
-try { window.trackWholesaleEvent = trackWholesaleEvent; } catch (_) {}
+try {
+  window.trackWholesaleEvent = trackWholesaleEvent;
+} catch (_) {}
 
 Ecwid.OnAPILoaded.add(function () {
   // Initialize robust wholesale price visibility logic
@@ -100,12 +112,15 @@ function waitForEcwidAndTokens(maxAttempts = 60, interval = 250) {
 /*****************************************************************************/
 
 function getWholesaleGroupName() {
-  return (window.WHOLESALE_GROUP_NAME && String(window.WHOLESALE_GROUP_NAME)) || "Wholesale Customer";
+  return (
+    (window.WHOLESALE_GROUP_NAME && String(window.WHOLESALE_GROUP_NAME)) ||
+    "Wholesaler"
+  );
 }
 
 const WHOLESALE_CACHE = {
   groupId: null,
-  extraFieldKeysByTitle: {}
+  extraFieldKeysByTitle: {},
 };
 
 async function ecwidFetchJSON(path, options) {
@@ -113,24 +128,62 @@ async function ecwidFetchJSON(path, options) {
   const url = `https://app.ecwid.com/api/v3/${storeId}${path}`;
   const init = options || {};
   const headers = Object.assign(
-    { Authorization: `Bearer ${publicToken}`, "Content-Type": "application/json" },
+    {
+      Authorization: `Bearer ${publicToken}`,
+      "Content-Type": "application/json",
+    },
     init.headers || {}
   );
   const res = await fetch(url, Object.assign({}, init, { headers }));
   if (!res.ok) {
     const err = new Error(`Ecwid API error ${res.status} for ${path}`);
-    try { err.status = res.status; } catch (_) {}
+    try {
+      err.status = res.status;
+    } catch (_) {}
     throw err;
   }
   return res.json();
 }
 
+function normalizeWholesaleBase(base) {
+  return String(base || "").replace(/\/+$/, "");
+}
+
+async function serverFetchJSON(path, options) {
+  const { storeId } = await waitForEcwidAndTokens();
+  const base = normalizeWholesaleBase(WHOLESALE_API_BASE);
+  const url = `${base}${path}`;
+  const init = options || {};
+  const headers = Object.assign(
+    { "Content-Type": "application/json", "X-App-Client": clientId },
+    init.headers || {}
+  );
+  const res = await fetch(url, Object.assign({}, init, { headers, credentials: "include" }));
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data && (data.error || data.message) || `Server API error ${res.status} for ${path}`);
+    try {
+      err.status = res.status;
+      err.payload = data;
+    } catch (_) {}
+    throw err;
+  }
+  return data;
+}
+
 async function resolveWholesaleGroupId() {
   if (WHOLESALE_CACHE.groupId) return WHOLESALE_CACHE.groupId;
   const data = await ecwidFetchJSON("/customer_groups", { method: "GET" });
-  const items = Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : [];
+  const items = Array.isArray(data)
+    ? data
+    : Array.isArray(data.items)
+    ? data.items
+    : [];
   const targetName = getWholesaleGroupName().toLowerCase();
-  const match = items.find(g => g && typeof g.name === "string" && g.name.toLowerCase() === targetName);
+  const match = items.find(
+    (g) =>
+      g && typeof g.name === "string" && g.name.toLowerCase() === targetName
+  );
   WHOLESALE_CACHE.groupId = match ? match.id : null;
   return WHOLESALE_CACHE.groupId;
 }
@@ -138,11 +191,23 @@ async function resolveWholesaleGroupId() {
 async function ensureExtraFieldKeyByTitle(title) {
   const t = String(title || "").trim();
   if (!t) return null;
-  if (WHOLESALE_CACHE.extraFieldKeysByTitle[t]) return WHOLESALE_CACHE.extraFieldKeysByTitle[t];
+  if (WHOLESALE_CACHE.extraFieldKeysByTitle[t])
+    return WHOLESALE_CACHE.extraFieldKeysByTitle[t];
 
-  const data = await ecwidFetchJSON("/store_extrafields/customers", { method: "GET" });
-  const items = Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : [];
-  const found = items.find(f => f && typeof f.title === "string" && f.title.trim().toLowerCase() === t.toLowerCase());
+  const data = await ecwidFetchJSON("/store_extrafields/customers", {
+    method: "GET",
+  });
+  const items = Array.isArray(data)
+    ? data
+    : Array.isArray(data.items)
+    ? data.items
+    : [];
+  const found = items.find(
+    (f) =>
+      f &&
+      typeof f.title === "string" &&
+      f.title.trim().toLowerCase() === t.toLowerCase()
+  );
   if (found && found.key) {
     WHOLESALE_CACHE.extraFieldKeysByTitle[t] = found.key;
     return found.key;
@@ -150,7 +215,7 @@ async function ensureExtraFieldKeyByTitle(title) {
 
   const created = await ecwidFetchJSON("/store_extrafields/customers", {
     method: "POST",
-    body: JSON.stringify({ title: t })
+    body: JSON.stringify({ title: t }),
   });
   const key = created && created.key;
   if (key) {
@@ -163,9 +228,12 @@ async function ensureExtraFieldKeyByTitle(title) {
 function buildCustomerUpdatePayload(values) {
   const extraFields = {};
   const ef = WHOLESALE_CACHE.extraFieldKeysByTitle;
-  if (ef["Cell Phone"] && values.cellPhone) extraFields[ef["Cell Phone"]] = String(values.cellPhone);
-  if (ef["Tax ID"] && values.taxId) extraFields[ef["Tax ID"]] = String(values.taxId);
-  if (ef["Referral Source"] && values.referralSource) extraFields[ef["Referral Source"]] = String(values.referralSource);
+  if (ef["Cell Phone"] && values.cellPhone)
+    extraFields[ef["Cell Phone"]] = String(values.cellPhone);
+  if (ef["Tax ID"] && values.taxId)
+    extraFields[ef["Tax ID"]] = String(values.taxId);
+  if (ef["Referral Source"] && values.referralSource)
+    extraFields[ef["Referral Source"]] = String(values.referralSource);
 
   const payload = {
     email: values.email,
@@ -175,9 +243,9 @@ function buildCustomerUpdatePayload(values) {
       companyName: values.companyName || "",
       countryCode: (values.countryCode || "").toUpperCase(),
       postalCode: values.postalCode || "",
-      phone: values.phone || ""
+      phone: values.phone || "",
     },
-    extraFields: extraFields
+    extraFields: extraFields,
   };
 
   if (WHOLESALE_CACHE.groupId) {
@@ -189,45 +257,78 @@ function buildCustomerUpdatePayload(values) {
   return payload;
 }
 
-async function ecwidGetWholesaleStatus(customerId) {
+async function ecwidGetWholesaleStatusDirect(customerId) {
   const targetGroupId = await resolveWholesaleGroupId().catch(() => null);
   const customer = await ecwidFetchJSON(`/customers/${encodeURIComponent(customerId)}`, { method: "GET" });
 
   const ids = Array.isArray(customer && customer.customerGroupIds)
     ? customer.customerGroupIds
-    : (customer && typeof customer.customerGroupId !== "undefined")
-      ? [customer.customerGroupId]
-      : [];
+    : customer && typeof customer.customerGroupId !== "undefined"
+    ? [customer.customerGroupId]
+    : [];
   let isApproved = false;
 
   if (targetGroupId != null) {
     isApproved = ids.includes(targetGroupId);
   } else {
-    const groupName = (customer && customer.customerGroup && customer.customerGroup.name) || "";
-    isApproved = groupName.toLowerCase() === getWholesaleGroupName().toLowerCase();
+    const groupName =
+      (customer && customer.customerGroup && customer.customerGroup.name) || "";
+    isApproved =
+      groupName.toLowerCase() === getWholesaleGroupName().toLowerCase();
   }
 
   return {
     isWholesaleApproved: !!isApproved,
     groupId: targetGroupId || null,
-    groupName: getWholesaleGroupName()
+    groupName: getWholesaleGroupName(),
   };
 }
 
-async function ecwidSubmitWholesaleRegistration(values) {
+async function ecwidGetWholesaleStatus(customerId) {
+  const { storeId } = await waitForEcwidAndTokens();
+  // Try server proxy first
+  try {
+    const q = `?customerId=${encodeURIComponent(customerId)}&storeId=${encodeURIComponent(storeId)}`;
+    const status = await serverFetchJSON(`/api/wholesale/status${q}`, { method: "GET" });
+    if (status && typeof status.isWholesaleApproved === "boolean") return status;
+  } catch (e) {
+    // Re-throw 401/403 for upstream UI handling
+    if (e && (e.status === 401 || e.status === 403)) throw e;
+  }
+  // Fallback to direct REST (may 401/403 with public token)
+  return ecwidGetWholesaleStatusDirect(customerId);
+}
+
+async function ecwidSubmitWholesaleRegistrationDirect(values) {
   await Promise.all([
     ensureExtraFieldKeyByTitle("Cell Phone"),
     ensureExtraFieldKeyByTitle("Tax ID"),
     ensureExtraFieldKeyByTitle("Referral Source"),
-    resolveWholesaleGroupId()
+    resolveWholesaleGroupId(),
   ]);
 
   const payload = buildCustomerUpdatePayload(values);
   const json = await ecwidFetchJSON(`/customers/${encodeURIComponent(values.customerId)}`, {
     method: "PUT",
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
   return json;
+}
+
+async function ecwidSubmitWholesaleRegistration(values) {
+  const { storeId } = await waitForEcwidAndTokens();
+  // Try server proxy first
+  try {
+    return await serverFetchJSON(`/api/wholesale/register`, {
+      method: "POST",
+      body: JSON.stringify({ storeId, ...(values || {}) }),
+    });
+  } catch (e) {
+    // Re-throw 401/403 for upstream UI handling
+    if (e && (e.status === 401 || e.status === 403)) throw e;
+  }
+  // Fallback to direct REST (use only in dev where server not configured)
+  return ecwidSubmitWholesaleRegistrationDirect(values);
 }
 
 /*****************************************************************************/
@@ -331,7 +432,12 @@ function initializeWholesalePriceVisibility() {
 
 try {
   window.triggerWholesaleVisibilityRefresh = function () {
-    if (!window.Ecwid || !Ecwid.Customer || typeof Ecwid.Customer.get !== "function") return;
+    if (
+      !window.Ecwid ||
+      !Ecwid.Customer ||
+      typeof Ecwid.Customer.get !== "function"
+    )
+      return;
     Ecwid.Customer.get(function () {
       if (typeof Ecwid.refreshConfig === "function") Ecwid.refreshConfig();
     });
@@ -759,7 +865,8 @@ function initializeWholesaleRegistration() {
 
   // Initial run
   try {
-    const last = window.Ecwid && Ecwid.getLastLoadedPage && Ecwid.getLastLoadedPage();
+    const last =
+      window.Ecwid && Ecwid.getLastLoadedPage && Ecwid.getLastLoadedPage();
     handleWholesaleRegistrationOnPage(last || { type: "UNKNOWN" });
   } catch (e) {
     handleWholesaleRegistrationOnPage({ type: "UNKNOWN" });
@@ -770,7 +877,8 @@ function initializeWholesaleRegistration() {
 
   // Hash-based routing support
   window.addEventListener("hashchange", function () {
-    const page = window.Ecwid && Ecwid.getLastLoadedPage && Ecwid.getLastLoadedPage();
+    const page =
+      window.Ecwid && Ecwid.getLastLoadedPage && Ecwid.getLastLoadedPage();
     handleWholesaleRegistrationOnPage(page || { type: "UNKNOWN" });
   });
 }
@@ -780,12 +888,27 @@ const WHOLESALE_STATUS_CACHE = { customerId: null, isWholesaleApproved: null };
 
 function fetchLoggedInCustomer() {
   return new Promise((resolve) => {
-    if (!window.Ecwid || !Ecwid.Customer || typeof Ecwid.Customer.get !== "function") {
+    if (
+      !window.Ecwid ||
+      !Ecwid.Customer ||
+      typeof Ecwid.Customer.get !== "function"
+    ) {
       resolve(null);
       return;
     }
     Ecwid.Customer.get((c) => resolve(c && c.email ? c : null));
   });
+}
+
+function isWholesaleByMembership(customer) {
+  try {
+    if (!customer || !customer.membership) return null;
+    const name = (customer.membership && customer.membership.name) || "";
+    if (!name) return null;
+    return name.toLowerCase() === getWholesaleGroupName().toLowerCase();
+  } catch (_) {
+    return null;
+  }
 }
 
 async function handleWholesaleRegistrationOnPage(page) {
@@ -811,6 +934,18 @@ async function handleWholesaleRegistrationOnPage(page) {
 
     // Non-registration routes: redirect logged-in non-wholesale users
     if (customer && typeof ecwidGetWholesaleStatus === "function") {
+      const membershipApproved = isWholesaleByMembership(customer);
+      if (membershipApproved === true) {
+        WHOLESALE_STATUS_CACHE.customerId = customer.id;
+        WHOLESALE_STATUS_CACHE.isWholesaleApproved = true;
+        return;
+      }
+      if (membershipApproved === false) {
+        WHOLESALE_STATUS_CACHE.customerId = customer.id;
+        WHOLESALE_STATUS_CACHE.isWholesaleApproved = false;
+        window.location.href = toWholesaleRegistrationPath();
+        return;
+      }
       // Use cache when available
       if (
         WHOLESALE_STATUS_CACHE.customerId === customer.id &&
@@ -830,7 +965,8 @@ async function handleWholesaleRegistrationOnPage(page) {
       });
       if (status && typeof status.isWholesaleApproved === "boolean") {
         WHOLESALE_STATUS_CACHE.customerId = customer.id;
-        WHOLESALE_STATUS_CACHE.isWholesaleApproved = !!status.isWholesaleApproved;
+        WHOLESALE_STATUS_CACHE.isWholesaleApproved =
+          !!status.isWholesaleApproved;
         if (!status.isWholesaleApproved) {
           window.location.href = toWholesaleRegistrationPath();
           return;
@@ -843,44 +979,54 @@ async function handleWholesaleRegistrationOnPage(page) {
 }
 
 async function renderWholesaleBanner({ customer, onReg }) {
+  const id = "wholesale-registration-banner";
+
   if (!WHOLESALE_FLAGS.ENABLE_WHOLESALE_BANNER || onReg) {
-    removeNodeById("wholesale-registration-banner");
+    removeNodeById(id);
     return;
   }
 
   // Show for guests; for logged-in users only if not wholesale-approved
   let shouldShow = !customer;
   if (customer && typeof ecwidGetWholesaleStatus === "function") {
-    if (
-      WHOLESALE_STATUS_CACHE.customerId === customer.id &&
-      WHOLESALE_STATUS_CACHE.isWholesaleApproved != null
-    ) {
-      shouldShow = !WHOLESALE_STATUS_CACHE.isWholesaleApproved;
+    const membershipApproved = isWholesaleByMembership(customer);
+    if (membershipApproved === true) {
+      shouldShow = false;
+    } else if (membershipApproved === false) {
+      shouldShow = true;
     } else {
-      const status = await ecwidGetWholesaleStatus(customer.id).catch((e) => {
-        if (e && (e.status === 401 || e.status === 403)) {
-          console.warn("Ecwid token lacks required scopes");
-        }
-        return null;
-      });
-      if (status && typeof status.isWholesaleApproved === "boolean") {
-        WHOLESALE_STATUS_CACHE.customerId = customer.id;
-        WHOLESALE_STATUS_CACHE.isWholesaleApproved = !!status.isWholesaleApproved;
-        shouldShow = !status.isWholesaleApproved;
+      if (
+        WHOLESALE_STATUS_CACHE.customerId === customer.id &&
+        WHOLESALE_STATUS_CACHE.isWholesaleApproved != null
+      ) {
+        shouldShow = !WHOLESALE_STATUS_CACHE.isWholesaleApproved;
       } else {
-        // Fail-open on errors
-        shouldShow = true;
+        const status = await ecwidGetWholesaleStatus(customer.id).catch((e) => {
+          if (e && (e.status === 401 || e.status === 403)) {
+            console.warn("Ecwid token lacks required scopes");
+          }
+          return null;
+        });
+        if (status && typeof status.isWholesaleApproved === "boolean") {
+          WHOLESALE_STATUS_CACHE.customerId = customer.id;
+          WHOLESALE_STATUS_CACHE.isWholesaleApproved =
+            !!status.isWholesaleApproved;
+          shouldShow = !status.isWholesaleApproved;
+        } else {
+          // Fail-open on errors
+          shouldShow = true;
+        }
       }
     }
   }
 
-  const id = "wholesale-registration-banner";
   if (!shouldShow) {
     removeNodeById(id);
     return;
   }
 
-  const container = document.querySelector(".ecwid-productBrowser") || document.body;
+  const container = document.querySelector(".ins-tiles--main") || document.body;
+  const anchor = document.querySelector(".ins-tile--header");
   let el = document.getElementById(id);
   if (!el) {
     el = document.createElement("div");
@@ -895,18 +1041,27 @@ async function renderWholesaleBanner({ customer, onReg }) {
     el.style.padding = "10px 12px";
     el.style.textAlign = "center";
     el.style.fontWeight = "600";
+  }
+
+  // Ensure placement: right after .ins-tile--header when present
+  if (anchor && anchor.parentNode) {
+    anchor.insertAdjacentElement("afterend", el);
+  } else if (!el.parentNode) {
+    // Fallback placement at top of container
     container.prepend(el);
   }
 
   el.innerHTML =
-    '<span>Register to access prices and place an order.</span> ' +
+    "<span>Register to access prices and place an order.</span> " +
     `<a href="${toWholesaleRegistrationPath()}" style="color:#fff;text-decoration:underline;margin-left:8px;">Register</a>`;
 
   trackWholesaleEvent("wholesale_banner_shown", {});
   if (!el.dataset.telemetryClick) {
-    const a = el.querySelector('a[href]');
+    const a = el.querySelector("a[href]");
     if (a) {
-      a.addEventListener("click", function () { trackWholesaleEvent("wholesale_banner_click", {}); });
+      a.addEventListener("click", function () {
+        trackWholesaleEvent("wholesale_banner_click", {});
+      });
       el.dataset.telemetryClick = "1";
     }
   }
@@ -965,99 +1120,106 @@ function renderWholesaleRegistrationPageShell(customer) {
     signedInBlock,
     '<div id="wr-error-summary" role="alert" aria-live="polite" style="display:none;margin-bottom:8px;color:#b00;"></div>',
     '<form id="wholesale-reg-form" novalidate>',
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">',
-        // Email (readonly)
-        '<label style="grid-column:1/-1;display:block;">',
-          '<span>Email (read-only)</span><br>',
-          `<input id="wr-email" type="email" value="${email}" readonly disabled style="width:100%;padding:8px;">`,
-        '</label>',
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">',
+    // Email (readonly)
+    '<label style="grid-column:1/-1;display:block;">',
+    "<span>Email (read-only)</span><br>",
+    `<input id="wr-email" type="email" value="${email}" readonly disabled style="width:100%;padding:8px;">`,
+    "</label>",
 
-        // Name (required)
-        '<label style="display:block;">',
-          '<span>Name *</span><br>',
-          '<input id="wr-name" type="text" style="width:100%;padding:8px;" aria-invalid="false">',
-          '<div id="err-wr-name" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
-        '</label>',
+    // Name (required)
+    '<label style="display:block;">',
+    "<span>Name *</span><br>",
+    '<input id="wr-name" type="text" style="width:100%;padding:8px;" aria-invalid="false">',
+    '<div id="err-wr-name" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
+    "</label>",
 
-        // Company (required)
-        '<label style="display:block;">',
-          '<span>Company *</span><br>',
-          '<input id="wr-company" type="text" style="width:100%;padding:8px;" aria-invalid="false">',
-          '<div id="err-wr-company" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
-        '</label>',
+    // Company (required)
+    '<label style="display:block;">',
+    "<span>Company *</span><br>",
+    '<input id="wr-company" type="text" style="width:100%;padding:8px;" aria-invalid="false">',
+    '<div id="err-wr-company" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
+    "</label>",
 
-        // Country (required, ISO 2)
-        '<label style="display:block;">',
-          '<span>Country (ISO 2) *</span><br>',
-          '<input id="wr-country" type="text" maxlength="2" style="width:100%;padding:8px;text-transform:uppercase;" aria-invalid="false" placeholder="US">',
-          '<div id="err-wr-country" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
-        '</label>',
+    // Country (required, ISO 2)
+    '<label style="display:block;">',
+    "<span>Country (ISO 2) *</span><br>",
+    '<input id="wr-country" type="text" maxlength="2" style="width:100%;padding:8px;text-transform:uppercase;" aria-invalid="false" placeholder="US">',
+    '<div id="err-wr-country" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
+    "</label>",
 
-        // Postal code (required)
-        '<label style="display:block;">',
-          '<span>Postal Code *</span><br>',
-          '<input id="wr-postal" type="text" style="width:100%;padding:8px;" aria-invalid="false">',
-          '<div id="err-wr-postal" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
-        '</label>',
+    // Postal code (required)
+    '<label style="display:block;">',
+    "<span>Postal Code *</span><br>",
+    '<input id="wr-postal" type="text" style="width:100%;padding:8px;" aria-invalid="false">',
+    '<div id="err-wr-postal" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
+    "</label>",
 
-        // Phone (required)
-        '<label style="display:block;">',
-          '<span>Phone *</span><br>',
-          '<input id="wr-phone" type="tel" style="width:100%;padding:8px;" aria-invalid="false" placeholder="+1 555-555-5555">',
-          '<div id="err-wr-phone" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
-        '</label>',
+    // Phone (required)
+    '<label style="display:block;">',
+    "<span>Phone *</span><br>",
+    '<input id="wr-phone" type="tel" style="width:100%;padding:8px;" aria-invalid="false" placeholder="+1 555-555-5555">',
+    '<div id="err-wr-phone" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
+    "</label>",
 
-        // Cell phone (optional)
-        '<label style="display:block;">',
-          '<span>Cell Phone (optional)</span><br>',
-          '<input id="wr-cell" type="tel" style="width:100%;padding:8px;" aria-invalid="false">',
-          '<div id="err-wr-cell" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
-        '</label>',
+    // Cell phone (optional)
+    '<label style="display:block;">',
+    "<span>Cell Phone (optional)</span><br>",
+    '<input id="wr-cell" type="tel" style="width:100%;padding:8px;" aria-invalid="false">',
+    '<div id="err-wr-cell" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
+    "</label>",
 
-        // Tax ID (required)
-        '<label style="display:block;">',
-          '<span>Tax ID *</span><br>',
-          '<input id="wr-taxid" type="text" style="width:100%;padding:8px;" aria-invalid="false">',
-          '<div id="err-wr-taxid" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
-        '</label>',
+    // Tax ID (required)
+    '<label style="display:block;">',
+    "<span>Tax ID *</span><br>",
+    '<input id="wr-taxid" type="text" style="width:100%;padding:8px;" aria-invalid="false">',
+    '<div id="err-wr-taxid" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
+    "</label>",
 
-        // Referral (optional)
-        '<label style="display:block;">',
-          '<span>How did you hear about us? (optional)</span><br>',
-          '<input id="wr-referral" type="text" style="width:100%;padding:8px;" aria-invalid="false" placeholder="Search Engine, Friend, ...">',
-          '<div id="err-wr-referral" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
-        '</label>',
+    // Referral (optional)
+    '<label style="display:block;">',
+    "<span>How did you hear about us? (optional)</span><br>",
+    '<input id="wr-referral" type="text" style="width:100%;padding:8px;" aria-invalid="false" placeholder="Search Engine, Friend, ...">',
+    '<div id="err-wr-referral" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
+    "</label>",
 
-        // Marketing consent (checkbox)
-        '<label style="grid-column:1/-1;display:flex;align-items:center;gap:8px;">',
-          '<input id="wr-marketing" type="checkbox">',
-          '<span>Sign me up for the newsletter</span>',
-        '</label>',
-      '</div>',
+    // Marketing consent (checkbox)
+    '<label style="grid-column:1/-1;display:flex;align-items:center;gap:8px;">',
+    '<input id="wr-marketing" type="checkbox">',
+    "<span>Sign me up for the newsletter</span>",
+    "</label>",
+    "</div>",
 
-      '<div style="margin-top:12px;display:flex;gap:8px;align-items:center;">',
-        '<button id="wr-submit" type="submit" style="padding:10px 14px;background:#0b5fff;color:#fff;border:none;border-radius:4px;font-weight:600;cursor:pointer;">Submit Registration</button>',
-        '<span id="wr-status" style="color:#555;"></span>',
-      '</div>',
-    '</form>'
+    '<div style="margin-top:12px;display:flex;gap:8px;align-items:center;">',
+    '<button id="wr-submit" type="submit" style="padding:10px 14px;background:#0b5fff;color:#fff;border:none;border-radius:4px;font-weight:600;cursor:pointer;">Submit Registration</button>',
+    '<span id="wr-status" style="color:#555;"></span>',
+    "</div>",
+    "</form>",
   ].join("");
 
-  if (!root.dataset.telemetryView) { trackWholesaleEvent("wholesale_registration_view", {}); root.dataset.telemetryView = "1"; }
+  if (!root.dataset.telemetryView) {
+    trackWholesaleEvent("wholesale_registration_view", {});
+    root.dataset.telemetryView = "1";
+  }
 
   attachWholesaleRegistrationHandlers(root, customer);
 }
 
 function validateWholesaleRegistrationValues(values) {
   const errors = {};
-  function req(v) { return !!(v && String(v).trim()); }
+  function req(v) {
+    return !!(v && String(v).trim());
+  }
   const phoneRe = /^[+0-9()\-\s]{7,}$/;
   const iso2 = /^[A-Za-z]{2}$/;
 
   if (!req(values.name)) errors.name = "Name is required";
   if (!req(values.companyName)) errors.companyName = "Company is required";
-  if (!req(values.countryCode) || !iso2.test(values.countryCode)) errors.countryCode = "Country must be a 2-letter code";
+  if (!req(values.countryCode) || !iso2.test(values.countryCode))
+    errors.countryCode = "Country must be a 2-letter code";
   if (!req(values.postalCode)) errors.postalCode = "Postal code is required";
-  if (!req(values.phone) || !phoneRe.test(values.phone)) errors.phone = "Enter a valid phone number";
+  if (!req(values.phone) || !phoneRe.test(values.phone))
+    errors.phone = "Enter a valid phone number";
   if (!req(values.taxId)) errors.taxId = "Tax ID is required";
   return errors;
 }
@@ -1101,21 +1263,35 @@ function clearFieldErrors() {
     "err-wr-cell",
   ].forEach((id) => showFieldError(id, ""));
   const errSummary = document.getElementById("wr-error-summary");
-  if (errSummary) { errSummary.textContent = ""; errSummary.style.display = "none"; }
+  if (errSummary) {
+    errSummary.textContent = "";
+    errSummary.style.display = "none";
+  }
 }
 
 function attachWholesaleRegistrationHandlers(root, customer) {
-  const form = root && root.querySelector && root.querySelector("#wholesale-reg-form");
+  const form =
+    root && root.querySelector && root.querySelector("#wholesale-reg-form");
   if (!form) return;
 
   // Live validation to toggle button state
-  const requiredIds = ["wr-name","wr-company","wr-country","wr-postal","wr-phone","wr-taxid"];
+  const requiredIds = [
+    "wr-name",
+    "wr-company",
+    "wr-country",
+    "wr-postal",
+    "wr-phone",
+    "wr-taxid",
+  ];
   function computeValues() {
     return {
       email: (customer && customer.email) || "",
       name: document.getElementById("wr-name").value.trim(),
       companyName: document.getElementById("wr-company").value.trim(),
-      countryCode: document.getElementById("wr-country").value.trim().toUpperCase(),
+      countryCode: document
+        .getElementById("wr-country")
+        .value.trim()
+        .toUpperCase(),
       postalCode: document.getElementById("wr-postal").value.trim(),
       phone: document.getElementById("wr-phone").value.trim(),
       cellPhone: document.getElementById("wr-cell").value.trim(),
@@ -1155,19 +1331,31 @@ function attachWholesaleRegistrationHandlers(root, customer) {
       if (errs.phone) showFieldError("err-wr-phone", errs.phone);
       if (errs.taxId) showFieldError("err-wr-taxid", errs.taxId);
       const errSummary = document.getElementById("wr-error-summary");
-      if (errSummary) { errSummary.textContent = "Please correct the highlighted fields."; errSummary.style.display = "block"; }
+      if (errSummary) {
+        errSummary.textContent = "Please correct the highlighted fields.";
+        errSummary.style.display = "block";
+      }
       return;
     }
 
     if (!values.customerId) {
       const errSummary = document.getElementById("wr-error-summary");
-      if (errSummary) { errSummary.textContent = "Please sign in before submitting the registration."; errSummary.style.display = "block"; }
+      if (errSummary) {
+        errSummary.textContent =
+          "Please sign in before submitting the registration.";
+        errSummary.style.display = "block";
+      }
       return;
     }
 
     try {
-      updateWholesaleSubmitState({ submitting: true, statusText: "Submitting registration…" });
-      trackWholesaleEvent("wholesale_registration_submit", { acceptMarketing: !!values.acceptMarketing });
+      updateWholesaleSubmitState({
+        submitting: true,
+        statusText: "Submitting registration…",
+      });
+      trackWholesaleEvent("wholesale_registration_submit", {
+        acceptMarketing: !!values.acceptMarketing,
+      });
       // Submit via Ecwid REST
       await ecwidSubmitWholesaleRegistration({
         customerId: values.customerId,
@@ -1191,12 +1379,23 @@ function attachWholesaleRegistrationHandlers(root, customer) {
       } catch (_) {}
 
       if (approved) {
-        try { if (typeof window.triggerWholesaleVisibilityRefresh === "function") window.triggerWholesaleVisibilityRefresh(); } catch (_) {}
-        updateWholesaleSubmitState({ submitting: false, statusText: "Success. Redirecting…" });
+        try {
+          if (typeof window.triggerWholesaleVisibilityRefresh === "function")
+            window.triggerWholesaleVisibilityRefresh();
+        } catch (_) {}
+        updateWholesaleSubmitState({
+          submitting: false,
+          statusText: "Success. Redirecting…",
+        });
         trackWholesaleEvent("wholesale_registration_success", {});
-        setTimeout(function () { window.location.href = "/products"; }, 400);
+        setTimeout(function () {
+          window.location.href = "/products";
+        }, 400);
       } else {
-        updateWholesaleSubmitState({ submitting: false, statusText: "Registration submitted. Awaiting approval." });
+        updateWholesaleSubmitState({
+          submitting: false,
+          statusText: "Registration submitted. Awaiting approval.",
+        });
       }
     } catch (err) {
       console.warn("Wholesale Reg: submission failed", err);
@@ -1205,9 +1404,11 @@ function attachWholesaleRegistrationHandlers(root, customer) {
       const errSummary = document.getElementById("wr-error-summary");
       if (errSummary) {
         if (err && (err.status === 401 || err.status === 403)) {
-          errSummary.textContent = "Store authorization is not available. Please contact support.";
+          errSummary.textContent =
+            "Store authorization is not available. Please contact support.";
         } else {
-          errSummary.textContent = (err && err.message) || "Submission failed. Please try again.";
+          errSummary.textContent =
+            (err && err.message) || "Submission failed. Please try again.";
         }
         errSummary.style.display = "block";
       }

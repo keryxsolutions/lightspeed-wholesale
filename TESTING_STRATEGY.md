@@ -1,21 +1,22 @@
 # Testing Strategy – Lightspeed eCom Wholesale App (Storefront)
 
-This guide validates the current app.js implementation across four areas:
+This guide validates the current app.js implementation across five areas:
 
 - Product tag display (from TAGS attribute via REST)
 - Category banner (full-width image with description overlay)
 - Wholesale price visibility (hide for guests, show for logged-in)
 - Wholesale registration flow (banner + /wholesale-registration page shell)
+- Telemetry
 
 Run the quick console checks below on your live store. All snippets are intended for the browser console with the app installed.
 
 ## Prerequisites
 
-- Design setting: Hide category names (Design → Category name position → Hide) for the banner effect.
-- Categories: Have an image and a meaningful description.
-- Product Types: Add a TAGS attribute (type TAGS, display DESCR) and assign tags to test products.
-- App installed and loaded (clientId embedded in app.js): `custom-app-121843055-1`.
-- Optional backend (only if using registration endpoints): Set `window.WHOLESALE_API_BASE` to your backend base URL (must implement `/api/wholesale/status` and `/api/wholesale/register`).
+- Design setting: Hide category names (for the banner effect)
+- Categories: Have an image and description
+- Product Types: TAGS attribute with values on test products
+- App installed and loaded (clientId: custom-app-121843055-1)
+- (Optional) Set window.WHOLESALE_GROUP_NAME if your wholesale group name differs
 
 ## Phase 0: Ecwid API readiness
 
@@ -136,34 +137,59 @@ setTimeout(() => {
 }, 1500);
 ```
 
-## Phase 4: Wholesale registration flow
-
-Features:
-
-- A sticky banner prompts users to register unless they are approved wholesale.
-- Visiting `/wholesale-registration` renders a page shell with a form.
-- Submitting posts to your backend (`WHOLESALE_API_BASE`): `/api/wholesale/register`, then checks `/api/wholesale/status`.
-
-Steps:
+## Phase 4: Wholesale registration flow via Ecwid REST
 
 ```javascript
-// 1) Banner visibility (guest or non-approved user)
+// javascript
+// 1) Banner visibility (guest or non-approved)
 setTimeout(() => {
   console.log("Banner node:", document.getElementById('wholesale-registration-banner'));
 }, 1000);
 
 // 2) Navigate to /wholesale-registration
-// Expect: #wholesale-registration-root exists, prices are force-hidden on this route
-setTimeout(() => {
-  console.log("Reg root:", document.getElementById('wholesale-registration-root'));
-}, 1200);
+// Expect: #wholesale-registration-root exists; prices force-hidden on this route
+
+// 3) Status check (logged-in)
+Ecwid.OnAPILoaded.add(async function () {
+  const c = await new Promise(r => Ecwid.Customer.get(r));
+  if (c?.id) {
+    const status = await ecwidGetWholesaleStatus(c.id).catch(e => (console.warn("Status error", e), null));
+    console.log("Wholesale status:", status);
+  }
+});
+
+// 4) Submit (simulated) — requires being logged in
+// Populate fields appropriately before running this in console:
+Ecwid.OnAPILoaded.add(async function () {
+  const c = await new Promise(r => Ecwid.Customer.get(r));
+  if (!c?.id) return console.warn("Login required");
+  const res = await ecwidSubmitWholesaleRegistration({
+    customerId: c.id,
+    email: c.email,
+    name: "Jane Doe",
+    companyName: "Acme Co",
+    countryCode: "US",
+    postalCode: "94016",
+    phone: "+1 555-555-5555",
+    cellPhone: "+1 555-222-3333",
+    taxId: "12-3456789",
+    referralSource: "Search Engine",
+    acceptMarketing: true
+  }).catch(e => (console.warn("Submit error", e), null));
+  console.log("Submit result:", res);
+});
 ```
 
-Validation notes:
+If REST calls fail with 401/403, the app’s public token lacks required scopes. In the UI, a friendly message appears; in console, you’ll see “Ecwid token lacks required scopes”.
 
-- Submit button disabled until all required fields are valid and user is signed in.
-- On success and immediate approval, user is redirected to `/products`.
-- If approval is pending, a status message shows.
+## Telemetry verification
+
+```javascript
+// javascript
+// After viewing registration page or showing the banner:
+console.log("Telemetry attached?", typeof window.trackWholesaleEvent === "function");
+// Click the banner link and watch for console lines prefixed with [WholesaleTelemetry]
+```
 
 ## Expected Results Checklist
 
@@ -171,7 +197,7 @@ Validation notes:
 - Category banner renders with image and description overlay.
 - Product pages with TAGS show a tags block.
 - Guests cannot see prices or price filter; logged-in customers can.
-- Registration banner appears for guests/non-approved; registration page shell renders; submission works against backend if configured.
+- Registration banner appears for guests/non-approved; registration page shell renders; submission works via Ecwid REST.
 
 ## Troubleshooting
 
@@ -179,4 +205,3 @@ Validation notes:
 - Tags not showing: Ensure product has TAGS attribute values; check console for `Tag System` warnings.
 - REST calls failing: Confirm token retrieval via `Ecwid.getAppPublicToken("custom-app-121843055-1")`; do not log token values.
 - Wholesale visibility not toggling: Check console for `Wholesale` warnings; ensure SPA navigation triggers `Ecwid.OnPageLoaded`.
-- Registration endpoints: If using backend, ensure `window.WHOLESALE_API_BASE` is set and endpoints return expected JSON per app.js contract.
