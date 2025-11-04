@@ -24,3 +24,6 @@
 
 # old files
 /old/
+
+# RepoPrompt
+.repoprompt/

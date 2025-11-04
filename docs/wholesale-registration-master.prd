@@ -1,12 +1,12 @@
 # Lightspeed eCom (Ecwid) — Wholesale Registration Flow — Master PRD
 
-Version: 1.0
+Version: 1.1
 Owner: Keryx Solutions
 Status: Draft
 Date: 2025-10-28
 
 ## 1) Summary
-Enable a wholesale registration flow that restricts price visibility and ordering to customers in the "Wholesaler" group. Logged‑in users not in that group are redirected to a dedicated registration page. A global banner prompts non‑wholesale users to register. The form pre-populates from the logged‑in profile, updates the customer via Ecwid Admin REST API, assigns the wholesale group, and redirects to `/products`. Existing price-visibility code is reused; prices remain hidden on the registration page.
+Enable a wholesale registration flow that restricts price visibility and ordering to customers in the "Wholesaler" group. A global banner prompts logged‑in non‑wholesale users to register. The form pre-populates from the logged‑in profile and saves via the Storefront `customer/update` endpoint with credentials included. Group assignment is handled by Ecwid Automations/Webhooks server‑side. Existing price-visibility code is reused.
 
 Docs reference:
 - Storefront JS overview: https://docs.ecwid.com/storefronts
@@ -16,6 +16,13 @@ Docs reference:
 - REST Update customer: https://docs.ecwid.com/api-reference/rest-api/customers/update-customer
 - REST Get customer: https://docs.ecwid.com/api-reference/rest-api/customers/get-customer
  - App settings (tokens & scopes): https://docs.ecwid.com/develop-apps/app-settings
+
+### Summary Update (v1.1)
+- Registration is implemented in-place on `/products/account/register` (no standalone `/wholesale-registration` page).
+- Storefront-only approach: use Ecwid Storefront JS (e.g., `Ecwid.Customer.get`) and `POST https://app.ecwid.com/storefront/api/v1/{storeId}/customer/update`.
+- No Admin REST calls on the storefront; no custom proxy server.
+- Customer Extra Fields are sourced from Storefront state (`ec.order.extraFields`) with a fallback discovery via `customer/update` response.
+- If we can't assing the wholesale group through the endpoint, wholesale group assignment is performed by Ecwid Automations/Webhooks after save (e.g., when a valid Tax ID is present).
 
 ## 2) Constraints & Current State
 - Only `app.js` and `app.css` are auto-loaded by Lightspeed; all storefront logic must live there.
@@ -35,24 +42,24 @@ Docs reference:
 
 ## 5) User Flow
 1. User logs in via the standard Ecwid process.
-2. Frontend checks wholesale status via Ecwid REST `GET /api/v3/{storeId}/customers/{customerId}`.
-3. If logged in and not wholesale → redirect to `/wholesale-registration`.
-4. On other pages, show a banner prompting registration; hide it on the registration page.
-5. On the registration page, show a prefilled form. Prices and buy buttons remain hidden here.
-6. Submit form → use Ecwid REST API to validate/update customer and assign the wholesale group.
-7. Success → redirect to `/products` (existing price logic then shows prices for wholesale users).
+2. Frontend evaluates membership via Storefront JS (`Ecwid.Customer.get`) where possible.
+3. Logged‑in, non‑wholesale users see a banner linking to `/products/account/register`.
+4. On `/products/account/register`, a prefilled registration form is injected into the account page container.
+5. Submit form → call Storefront `customer/update` to save `updatedCustomer` and extra fields (requires bearer token in header, which can be found in the cookie `ec-[store_id]-session`, eg `ec-121843055-session`).
+6. Ecwid Automations/Webhooks (server-side) assign the wholesale group upon validation.
+7. Storefront config refreshes to reflect updated state; navigation remains on the account area.
 
 ## 6) Functional Requirements
 - **FR‑1 Login & Detection**
   - Use `Ecwid.OnAPILoaded` and `Ecwid.OnPageLoaded` to run checks on initial load and each SPA navigation.
   - Use `Ecwid.Customer.get(cb)` to detect login and obtain `customer.id`, `customer.email`, and `billingPerson` fields for prefill.
-- **FR‑2 Wholesale Status Check**
-  - Call Ecwid REST `GET /api/v3/{storeId}/customers/{customerId}` and inspect `customerGroupId`/`customerGroupName` to determine membership in the wholesale group.
-- **FR‑3 Redirect**
-  - If logged in and not wholesale, hard-redirect to `/wholesale-registration` (hash‑compatible if needed: `/#/wholesale-registration`).
+- **FR‑2 Wholesale Status Check (Storefront-only)**
+  - Determine membership primarily from Storefront JS (`customer.membership`), avoiding Admin REST calls.
+- **FR‑3 Navigation**
+  - No auto‑redirect. Show a banner for logged‑in, non‑wholesale users linking to `/products/account/register`.
 - **FR‑4 Banner**
-  - Show a persistent banner on all pages except the registration page for guests and logged‑in non‑wholesale users.
-  - Copy: `Register to access prices and place an order.` Link: `/wholesale-registration`.
+  - Show a persistent banner on all pages except the account/register view.
+  - Copy: `Register to access prices and place an order.` Link: `/products/account/register`.
 - **FR‑5 Registration Form (fields and mapping)**
   - Email (required, display‑only, read‑only UI) → prefilled from `Ecwid.Customer.get`; used for identity verification only; not updated. Render as non-editable (readonly/disabled input or static text).
   - Name (required) → `billingPerson.name`
@@ -65,28 +72,19 @@ Docs reference:
   - How did you hear about us? (optional) → Customer Extra Field titled `How did you hear about us?` (see FR‑6)
   - Newsletter signup (checkbox) → `acceptMarketing` (boolean)
 - **FR‑6 Customer Extra Fields (align with importer)**
-  - Use Ecwid Customer Extra Fields (store-level definitions) for custom data, matching titles used by the migration tool:
+  - Prefer Storefront state for checkout/extra field definitions; fallback to `customer/update` response `checkoutSettings.extraFields`.
+  - Use titles matching the migration tool:
     - `Tax ID`
     - `How did you hear about us?`
     - `Cell Phone` (new, optional)
-  - On submit, ensure the above fields exist using Ecwid REST `POST /api/v3/{storeId}/store_extrafields/customers` if missing, then set per-customer values using `PUT /api/v3/{storeId}/customers/{customerId}` with:
-    ```json
-    {
-      "extraFields": [
-        {"key": "<Tax ID key>", "value": "<taxId>"},
-        {"key": "<How did you hear about us? key>", "value": "<referral>"},
-        {"key": "<Cell Phone key>", "value": "<cellPhone>"}
-      ]
-    }
-    ```
- - **FR‑7 Group Assignment**
-  - On successful submit, assign the user to the wholesale group by updating the customer `customerGroupId` via Ecwid REST `PUT /api/v3/{storeId}/customers/{customerId}`.
-  - Resolve `WHOLESALE_GROUP_ID` by name (e.g., `Wholesaler`) using Ecwid REST `GET /api/v3/{storeId}/customer_groups` (search and cache the ID).
-  - After assignment, the frontend MUST confirm wholesale status via `GET /api/v3/{storeId}/customers/{customerId}` and then refresh storefront config so price visibility updates immediately (e.g., re-run visibility initializer and call `Ecwid.refreshConfig()`), before redirecting.
+  - On submit, call Storefront `customer/update` to update `updatedCustomer` and provide `checkout.extraFields` data for persistence.
+- **FR‑7 Group Assignment**
+  - Performed by Ecwid Automations/Webhooks (server-side) after data validation; no client-side `customerGroupId` updates.
+  - After saving, refresh storefront config so visibility updates promptly (`Ecwid.refreshConfig()`).
 - **FR‑8 Success Redirect**
-  - On success, front-end redirects to `/products`.
+  - User is redirected to store frontpage `/products`. An info banner is displayed showing that the user was successfully registered.
 - **FR‑9 Registration Page Price State**
-  - While on `/wholesale-registration`, force-hide prices and buy buttons, regardless of login state.
+  - Registration runs under the account area; no dedicated price-hiding page is required. Existing visibility logic remains in effect.
 - **FR‑10 Error Handling**
   - If Ecwid REST API validation or calls fail, show inline error and remain on the registration page; do not assign group.
 
@@ -94,37 +92,15 @@ Docs reference:
 - **7.1 Frontend (app.js)**
   - Add `initializeWholesaleRegistration()` module:
     - Hooks `Ecwid.OnAPILoaded` and `Ecwid.OnPageLoaded`.
-    - Calls Ecwid REST `GET /api/v3/{storeId}/customers/{customerId}` for logged-in users to determine wholesale status.
-    - Injects banner on all pages except registration.
-    - Renders registration page at `/wholesale-registration`, pre-populates fields from `Ecwid.Customer.get`, and forces price hide on this page.
-    - After successful update: re-check wholesale status via `GET /api/v3/{storeId}/customers/{customerId}`; if approved, re-run price visibility initializer and call `Ecwid.refreshConfig()` so prices update immediately, then redirect to `/products`.
+    - Determines membership from Storefront JS (`customer.membership`).
+    - Injects a banner on all pages (existing) except the account/register (new) view.
+    - Renders registration form at `/products/account/register`, pre-populates from `Ecwid.Customer.get`.
+    - After save: call `Ecwid.refreshConfig()` so prices update promptly.
     - CSS in `app.css` for `.wholesale-registration-banner` and `.wholesale-registration-form`.
     - Do not regress existing modules (price visibility, category banner, tag system).
 
-- **7.2 Server Proxy for Ecwid Admin REST (secure)**
-  - Admin REST calls require a secret token and MUST NOT be executed on the storefront. We will use a small server that wraps the Ecwid Admin REST and holds the secret token.
-  - Frontend uses the public token only for JS API and public reads; all sensitive operations are proxied through the server.
-  - Endpoints (JSON over HTTPS):
-    - `GET /api/wholesale/status?customerId={id}&storeId={storeId}` → `{ isWholesaleApproved: boolean, groupId?: number, groupName?: string }`
-    - `POST /api/wholesale/register` with body `{ storeId, customerId, email, name, companyName, countryCode, postalCode, phone, cellPhone?, taxId, referralSource?, acceptMarketing }` → `{ success: true }`
-  - Server responsibilities:
-    1) Validate inputs; verify `storeId` matches configured store.
-    2) Use Admin REST with secret token to:
-       - `GET /api/v3/{storeId}/customers/{customerId}`
-       - `GET /api/v3/{storeId}/customer_groups` (resolve ID by name "Wholesaler")
-       - `GET/POST /api/v3/{storeId}/store_extrafields/customers` (ensure extra fields)
-       - `PUT /api/v3/{storeId}/customers/{customerId}` (update fields + assign group)
-    3) Return minimal JSON to the client; never expose Admin responses verbatim when not needed.
-  - Security:
-    - Secret token stored server-side only; never sent to browser.
-    - CORS allowlist to the storefront domain(s); enforce `Origin` check.
-    - Require `X-App-Client: <clientId>` header and verify `storeId`.
-    - CSRF protection for POST (e.g., SameSite cookies + double-submit token), and rate limiting.
-    - Server runs on HTTPS.
-  - Flow:
-    1) Frontend calls `GET /api/wholesale/status` only when JS membership is inconclusive.
-    2) On submit, frontend calls `POST /api/wholesale/register` with payload; server performs Admin REST sequence (ensure extra fields → resolve group → update customer).
-    3) Frontend rechecks membership via JS API (preferred) or server `/status`, refreshes Ecwid config, then redirects.
+- **7.2 Removed in v1.1: Server Proxy for Admin REST**
+  - No custom proxy server is used. Admin REST calls are not executed from the storefront.
 
  - **7.3 Data Model Mapping**
   - Core (from registration form):
@@ -142,22 +118,23 @@ Docs reference:
     - `customerGroupId` → `WHOLESALE_GROUP_ID` (resolved by name and cached)
 
 - **7.4 Routing**
-  - Registration page path: `/wholesale-registration` (hash-compatible if needed).
-  - Success redirect: `/products`.
+  - Registration path: `/products/account/register` (hash-compatible if needed).
+  - No required redirect after save.
 
 - **7.5 Banner Behavior**
-  - Show on all pages except `/wholesale-registration`.
+  - Show on all pages except `/products/account/register`.
   - Copy: `Register to access prices and place an order.`
   - Hide banner for customers already in the wholesale group.
 
 ## 8) Validation & Error Handling
-- Frontend validation must mirror Lightspeed/Ecwid UI patterns:
-  - Required fields show an asterisk; invalid fields display inline error text beneath the input and a red input border.
-  - Disable the Submit button until required fields are valid.
-  - Field checks: name non-empty; country is valid ISO 2 code; postal code non-empty; phone matches a basic tel pattern; tax ID non-empty; optional fields skipped if empty.
-  - Accessibility: mark invalid inputs with `aria-invalid="true"` and use an `aria-live="polite"` region for error summaries.
-- Server validation mirrors client and rejects invalid payloads (fail-fast on identity mismatch).
-- Network failures: show error, preserve entered values, allow retry.
+- Frontend must match Ecwid storefront patterns (checkout/account UI):
+  - Labeling: All fields are required unless explicitly marked "(optional)". Do not use asterisks. Optional labels appear as part of the field title (e.g., "Phone (optional)", "Company name (optional)").
+  - Error presentation: Apply a red border and light red background to the control and render an inline message beneath it. Add `form-control--error` to the control wrapper and a message element `<div class="form__msg form__msg--error" id="[field-id]-msg">…</div>`. Connect via `aria-describedby="[field-id]-msg"`. See exploration snippet for structure.
+  - Submission: Keep the Submit/Continue button enabled. On click, block submission, focus/scroll to the first invalid field, and show inline errors. Preserve all entered values.
+  - Field checks: name non-empty; country is a valid ISO‑2 code; postal code non-empty; tax ID non-empty; phone validated only if provided (optional); other optional fields skipped if empty.
+  - Accessibility: set `aria-invalid="true"` on invalid inputs/selects; associate errors via `aria-describedby`; use an `aria-live="polite"` region if a summary banner is shown.
+- Server validation mirrors client, verifies identity, and rejects invalid payloads (fail‑fast on identity mismatch).
+- Network failures: show error inline, preserve entered values, allow retry.
 
 ## 9) Accessibility & i18n
 - Labels tied to inputs; full keyboard navigation.
@@ -169,20 +146,39 @@ Docs reference:
   - `wholesale_banner_shown`, `wholesale_banner_click`
   - `wholesale_registration_view`, `wholesale_registration_submit`, `wholesale_registration_success`, `wholesale_registration_failure`
 
-## 11) Security & Privacy
+## 11) Testing
+- **Unit tests (jsdom + Vitest/Jest)**
+  - [U1] Routing helpers: `isAccountRegisterPath`, `toAccountRegisterPath` — correct detection/URLs.
+  - [U2] Extra fields: `normalizeExtraDefs(map)` — maps Tax ID, How did you hear…, Cell Phone; resilient to missing keys/titles.
+  - [U3] Error rendering helper: invalid field adds `form-control--error` to control wrapper, sets `aria-invalid="true"`, links message via `aria-describedby="[id]-msg"`, and renders `<div class="form__msg form__msg--error" id="[id]-msg">…</div>`.
+  - [U4] Visibility helpers: inject/remove `#wholesale-hide-css` correctly when toggling logged-in state.
+  - [U5] Telemetry: `trackWholesaleEvent` deduplicates by key and logs once per unique payload.
+- **Integration/E2E (Playwright on staging store)**
+  - [I1] Banner: shows for logged‑in non‑wholesale users; hidden for guests and approved wholesale.
+  - [I2] Registration page: at `/products/account/register` injects form into `.ec-cart__body-inner`, prefilled from `Ecwid.Customer.get`.
+  - [I3] Validation: with required fields empty, submission blocks, first invalid field receives focus, and error UI matches spec (`form-control--error` + inline message).
+  - [I4] Submit success: calls `storefront/api/v1/{storeId}/customer/update`, preserves entered values, then `Ecwid.refreshConfig()` is invoked.
+  - [I5] Price visibility toggles appropriately when logging in/out.
+  - [I6] Telemetry events fired on view, submit, success, failure.
+- **Accessibility checks**
+  - [A1] Invalid inputs have `aria-invalid="true"` and messages linked via `aria-describedby`.
+  - [A2] Optional summary region (if present) uses `aria-live="polite"`. Keyboard focus moves to the first invalid control.
+- **Test environment**
+  - Use a staging store with seeded test users (guest, logged‑in non‑wholesale, wholesale). Mock Ecwid APIs for unit tests; avoid real network.
+- **CI**
+  - Run unit tests on every PR. Nightly Playwright smoke on staging: banner visible (non‑wholesale), register form renders, one validation failure path, one successful submit.
+
+## 12) Security & Privacy
 - All PII submitted via HTTPS only.
 - Verify customer identity via Ecwid (`GET /customers/{id}`) before updates.
 - Admin tokens never exposed to the browser.
 - CSRF protection and rate limiting applied if any intermediary app/server is used to invoke Admin REST calls.
 
-## 12) Rollout Plan
-- Feature flags:
-  - `ENABLE_WHOLESALE_REGISTRATION`
-  - `ENABLE_WHOLESALE_BANNER`
+## 13) Rollout Plan
 - Environments: staging → production.
 - Backward compatible with existing visibility logic.
 
-## 13) Acceptance Criteria
+## 14) Acceptance Criteria
 - **AC‑1** Guest users: prices hidden; banner visible; Register link works.
 - **AC‑2** Logged‑in, non‑wholesale: auto‑redirect to `/wholesale-registration`.
 - **AC‑3** On `/wholesale-registration`, prices/buy buttons remain hidden.
@@ -191,12 +187,12 @@ Docs reference:
 - **AC‑6** Logged‑in wholesale users: no redirect, no banner.
 - **AC‑7** Errors shown inline; no partial/inconsistent state.
 
-## 14) Open Questions
+## 15) Open Questions
 - Confirm wholesale group exact name vs using only group ID (PRD recommends ID with name fallback lookup/caching).
 - Should we auto-set `taxExempt = true` upon wholesale assignment (importer does this heuristically)?
 - Do we also add a secondary PHONE contact for cell number (in addition to extra field), or keep cell strictly as an extra field?
 
-## 15) References
+## 16) References
 - `app.js`, `app.css` in this repo
 - Ecwid Storefront docs and REST API (links above)
 - Importer script used for alignment: `esprit-creations/migration/customers_import.py` (Customer Extra Fields titles and update pattern)

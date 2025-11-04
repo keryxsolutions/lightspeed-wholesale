@@ -12,21 +12,14 @@ const WHOLESALE_FLAGS = {
   ENABLE_WHOLESALE_BANNER: true,
 };
 
-// Backend API base (override via window.WHOLESALE_API_BASE)
-const WHOLESALE_API_BASE =
-  (window.WHOLESALE_API_BASE && String(window.WHOLESALE_API_BASE)) ||
-  "https://your-backend.example.com";
-
 // Route helpers (supports pathname and hash)
-function isWholesaleRegistrationPath() {
+function isAccountRegisterPath() {
   const p = window.location.pathname || "";
   const h = window.location.hash || "";
-  return (
-    p === "/wholesale-registration" || /#\/?wholesale-registration/.test(h)
-  );
+  return p === "/products/account/register" || /#\/?account\/register/.test(h);
 }
-function toWholesaleRegistrationPath() {
-  return "/wholesale-registration";
+function toAccountRegisterPath() {
+  return "/products/account/register";
 }
 
 // DOM helpers (idempotent)
@@ -117,11 +110,7 @@ function getWholesaleGroupName() {
     "Wholesaler"
   );
 }
-
-const WHOLESALE_CACHE = {
-  groupId: null,
-  extraFieldKeysByTitle: {},
-};
+const WHOLESALE_CACHE = {};
 
 async function ecwidFetchJSON(path, options) {
   const { storeId, publicToken } = await waitForEcwidAndTokens();
@@ -145,191 +134,9 @@ async function ecwidFetchJSON(path, options) {
   return res.json();
 }
 
-function normalizeWholesaleBase(base) {
-  return String(base || "").replace(/\/+$/, "");
-}
+/* removed legacy server proxy helpers */
 
-async function serverFetchJSON(path, options) {
-  const { storeId } = await waitForEcwidAndTokens();
-  const base = normalizeWholesaleBase(WHOLESALE_API_BASE);
-  const url = `${base}${path}`;
-  const init = options || {};
-  const headers = Object.assign(
-    { "Content-Type": "application/json", "X-App-Client": clientId },
-    init.headers || {}
-  );
-  const res = await fetch(url, Object.assign({}, init, { headers, credentials: "include" }));
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const err = new Error(data && (data.error || data.message) || `Server API error ${res.status} for ${path}`);
-    try {
-      err.status = res.status;
-      err.payload = data;
-    } catch (_) {}
-    throw err;
-  }
-  return data;
-}
-
-async function resolveWholesaleGroupId() {
-  if (WHOLESALE_CACHE.groupId) return WHOLESALE_CACHE.groupId;
-  const data = await ecwidFetchJSON("/customer_groups", { method: "GET" });
-  const items = Array.isArray(data)
-    ? data
-    : Array.isArray(data.items)
-    ? data.items
-    : [];
-  const targetName = getWholesaleGroupName().toLowerCase();
-  const match = items.find(
-    (g) =>
-      g && typeof g.name === "string" && g.name.toLowerCase() === targetName
-  );
-  WHOLESALE_CACHE.groupId = match ? match.id : null;
-  return WHOLESALE_CACHE.groupId;
-}
-
-async function ensureExtraFieldKeyByTitle(title) {
-  const t = String(title || "").trim();
-  if (!t) return null;
-  if (WHOLESALE_CACHE.extraFieldKeysByTitle[t])
-    return WHOLESALE_CACHE.extraFieldKeysByTitle[t];
-
-  const data = await ecwidFetchJSON("/store_extrafields/customers", {
-    method: "GET",
-  });
-  const items = Array.isArray(data)
-    ? data
-    : Array.isArray(data.items)
-    ? data.items
-    : [];
-  const found = items.find(
-    (f) =>
-      f &&
-      typeof f.title === "string" &&
-      f.title.trim().toLowerCase() === t.toLowerCase()
-  );
-  if (found && found.key) {
-    WHOLESALE_CACHE.extraFieldKeysByTitle[t] = found.key;
-    return found.key;
-  }
-
-  const created = await ecwidFetchJSON("/store_extrafields/customers", {
-    method: "POST",
-    body: JSON.stringify({ title: t }),
-  });
-  const key = created && created.key;
-  if (key) {
-    WHOLESALE_CACHE.extraFieldKeysByTitle[t] = key;
-    return key;
-  }
-  return null;
-}
-
-function buildCustomerUpdatePayload(values) {
-  const extraFields = {};
-  const ef = WHOLESALE_CACHE.extraFieldKeysByTitle;
-  if (ef["Cell Phone"] && values.cellPhone)
-    extraFields[ef["Cell Phone"]] = String(values.cellPhone);
-  if (ef["Tax ID"] && values.taxId)
-    extraFields[ef["Tax ID"]] = String(values.taxId);
-  if (ef["Referral Source"] && values.referralSource)
-    extraFields[ef["Referral Source"]] = String(values.referralSource);
-
-  const payload = {
-    email: values.email,
-    acceptMarketing: !!values.acceptMarketing,
-    billingPerson: {
-      name: values.name || "",
-      companyName: values.companyName || "",
-      countryCode: (values.countryCode || "").toUpperCase(),
-      postalCode: values.postalCode || "",
-      phone: values.phone || "",
-    },
-    extraFields: extraFields,
-  };
-
-  if (WHOLESALE_CACHE.groupId) {
-    payload.customerGroupId = WHOLESALE_CACHE.groupId;
-  }
-  if (values.taxExempt === true) {
-    payload.taxExempt = true;
-  }
-  return payload;
-}
-
-async function ecwidGetWholesaleStatusDirect(customerId) {
-  const targetGroupId = await resolveWholesaleGroupId().catch(() => null);
-  const customer = await ecwidFetchJSON(`/customers/${encodeURIComponent(customerId)}`, { method: "GET" });
-
-  const ids = Array.isArray(customer && customer.customerGroupIds)
-    ? customer.customerGroupIds
-    : customer && typeof customer.customerGroupId !== "undefined"
-    ? [customer.customerGroupId]
-    : [];
-  let isApproved = false;
-
-  if (targetGroupId != null) {
-    isApproved = ids.includes(targetGroupId);
-  } else {
-    const groupName =
-      (customer && customer.customerGroup && customer.customerGroup.name) || "";
-    isApproved =
-      groupName.toLowerCase() === getWholesaleGroupName().toLowerCase();
-  }
-
-  return {
-    isWholesaleApproved: !!isApproved,
-    groupId: targetGroupId || null,
-    groupName: getWholesaleGroupName(),
-  };
-}
-
-async function ecwidGetWholesaleStatus(customerId) {
-  const { storeId } = await waitForEcwidAndTokens();
-  // Try server proxy first
-  try {
-    const q = `?customerId=${encodeURIComponent(customerId)}&storeId=${encodeURIComponent(storeId)}`;
-    const status = await serverFetchJSON(`/api/wholesale/status${q}`, { method: "GET" });
-    if (status && typeof status.isWholesaleApproved === "boolean") return status;
-  } catch (e) {
-    // Re-throw 401/403 for upstream UI handling
-    if (e && (e.status === 401 || e.status === 403)) throw e;
-  }
-  // Fallback to direct REST (may 401/403 with public token)
-  return ecwidGetWholesaleStatusDirect(customerId);
-}
-
-async function ecwidSubmitWholesaleRegistrationDirect(values) {
-  await Promise.all([
-    ensureExtraFieldKeyByTitle("Cell Phone"),
-    ensureExtraFieldKeyByTitle("Tax ID"),
-    ensureExtraFieldKeyByTitle("Referral Source"),
-    resolveWholesaleGroupId(),
-  ]);
-
-  const payload = buildCustomerUpdatePayload(values);
-  const json = await ecwidFetchJSON(`/customers/${encodeURIComponent(values.customerId)}`, {
-    method: "PUT",
-    body: JSON.stringify(payload),
-  });
-  return json;
-}
-
-async function ecwidSubmitWholesaleRegistration(values) {
-  const { storeId } = await waitForEcwidAndTokens();
-  // Try server proxy first
-  try {
-    return await serverFetchJSON(`/api/wholesale/register`, {
-      method: "POST",
-      body: JSON.stringify({ storeId, ...(values || {}) }),
-    });
-  } catch (e) {
-    // Re-throw 401/403 for upstream UI handling
-    if (e && (e.status === 401 || e.status === 403)) throw e;
-  }
-  // Fallback to direct REST (use only in dev where server not configured)
-  return ecwidSubmitWholesaleRegistrationDirect(values);
-}
+/* removed legacy Admin REST registration helpers */
 
 /*****************************************************************************/
 // Wholesale Price Visibility
@@ -913,65 +720,27 @@ function isWholesaleByMembership(customer) {
 
 async function handleWholesaleRegistrationOnPage(page) {
   try {
-    const onReg = isWholesaleRegistrationPath();
+    const onReg = isAccountRegisterPath();
     const customer = await fetchLoggedInCustomer();
 
-    // Cleanup when leaving registration route
+    // Cleanup when leaving account/register
     if (!onReg) {
-      forceHidePricesOnRegistration(false);
-      removeNodeById("wholesale-registration-root");
+      stopAccountRegisterObserver();
+      const c = queryAccountBody();
+      if (c) restoreAccountBody(c);
+      removeNodeById("account-register-root");
     }
 
-    // Banner visibility (hidden on registration route)
+    // Banner visibility (hidden on account/register)
     await renderWholesaleBanner({ customer, onReg });
 
-    // Registration route: render shell and force-hide prices
+    // On account/register, inject our form
     if (onReg) {
-      renderWholesaleRegistrationPageShell(customer);
-      forceHidePricesOnRegistration(true);
-      return;
-    }
-
-    // Non-registration routes: redirect logged-in non-wholesale users
-    if (customer && typeof ecwidGetWholesaleStatus === "function") {
-      const membershipApproved = isWholesaleByMembership(customer);
-      if (membershipApproved === true) {
-        WHOLESALE_STATUS_CACHE.customerId = customer.id;
-        WHOLESALE_STATUS_CACHE.isWholesaleApproved = true;
-        return;
-      }
-      if (membershipApproved === false) {
-        WHOLESALE_STATUS_CACHE.customerId = customer.id;
-        WHOLESALE_STATUS_CACHE.isWholesaleApproved = false;
-        window.location.href = toWholesaleRegistrationPath();
-        return;
-      }
-      // Use cache when available
-      if (
-        WHOLESALE_STATUS_CACHE.customerId === customer.id &&
-        WHOLESALE_STATUS_CACHE.isWholesaleApproved != null
-      ) {
-        if (!WHOLESALE_STATUS_CACHE.isWholesaleApproved) {
-          window.location.href = toWholesaleRegistrationPath();
-        }
-        return;
-      }
-
-      const status = await ecwidGetWholesaleStatus(customer.id).catch((e) => {
-        if (e && (e.status === 401 || e.status === 403)) {
-          console.warn("Ecwid token lacks required scopes");
-        }
-        return null;
-      });
-      if (status && typeof status.isWholesaleApproved === "boolean") {
-        WHOLESALE_STATUS_CACHE.customerId = customer.id;
-        WHOLESALE_STATUS_CACHE.isWholesaleApproved =
-          !!status.isWholesaleApproved;
-        if (!status.isWholesaleApproved) {
-          window.location.href = toWholesaleRegistrationPath();
-          return;
-        }
-      }
+      const ensure = () => {
+        if (queryAccountBody()) renderOrUpdateAccountRegister();
+      };
+      ensure();
+      startAccountRegisterObserver(ensure);
     }
   } catch (e) {
     console.warn("Wholesale Reg: handler error", e);
@@ -986,38 +755,20 @@ async function renderWholesaleBanner({ customer, onReg }) {
     return;
   }
 
-  // Show for guests; for logged-in users only if not wholesale-approved
-  let shouldShow = !customer;
-  if (customer && typeof ecwidGetWholesaleStatus === "function") {
+  // Show only for logged-in non-wholesale users
+  let shouldShow = false;
+  if (customer) {
     const membershipApproved = isWholesaleByMembership(customer);
-    if (membershipApproved === true) {
-      shouldShow = false;
-    } else if (membershipApproved === false) {
-      shouldShow = true;
-    } else {
-      if (
-        WHOLESALE_STATUS_CACHE.customerId === customer.id &&
-        WHOLESALE_STATUS_CACHE.isWholesaleApproved != null
-      ) {
-        shouldShow = !WHOLESALE_STATUS_CACHE.isWholesaleApproved;
-      } else {
-        const status = await ecwidGetWholesaleStatus(customer.id).catch((e) => {
-          if (e && (e.status === 401 || e.status === 403)) {
-            console.warn("Ecwid token lacks required scopes");
-          }
-          return null;
-        });
-        if (status && typeof status.isWholesaleApproved === "boolean") {
-          WHOLESALE_STATUS_CACHE.customerId = customer.id;
-          WHOLESALE_STATUS_CACHE.isWholesaleApproved =
-            !!status.isWholesaleApproved;
-          shouldShow = !status.isWholesaleApproved;
-        } else {
-          // Fail-open on errors
-          shouldShow = true;
-        }
-      }
+    if (membershipApproved === true) shouldShow = false;
+    else if (membershipApproved === false) shouldShow = true;
+    else {
+      shouldShow =
+        WHOLESALE_STATUS_CACHE.customerId === customer.id
+          ? !WHOLESALE_STATUS_CACHE.isWholesaleApproved
+          : true;
     }
+  } else {
+    shouldShow = false;
   }
 
   if (!shouldShow) {
@@ -1053,7 +804,7 @@ async function renderWholesaleBanner({ customer, onReg }) {
 
   el.innerHTML =
     "<span>Register to access prices and place an order.</span> " +
-    `<a href="${toWholesaleRegistrationPath()}" style="color:#fff;text-decoration:underline;margin-left:8px;">Register</a>`;
+    `<a href="${toAccountRegisterPath()}" style="color:#fff;text-decoration:underline;margin-left:8px;">Register</a>`;
 
   trackWholesaleEvent("wholesale_banner_shown", {});
   if (!el.dataset.telemetryClick) {
@@ -1067,351 +818,251 @@ async function renderWholesaleBanner({ customer, onReg }) {
   }
 }
 
-function forceHidePricesOnRegistration(on) {
-  const id = "wholesale-registration-hide-css";
-  if (!on) {
-    document.body.classList.remove("wholesale-registration-page");
-    removeNodeById(id);
-    return;
-  }
-  ensureSingletonNode(id, () => {
-    const s = document.createElement("style");
-    s.textContent = `
-      body.wholesale-registration-page .details-product-purchase__controls,
-      body.wholesale-registration-page .ec-filter--price,
-      body.wholesale-registration-page .ecwid-productBrowser-price,
-      body.wholesale-registration-page .ecwid-price-value,
-      body.wholesale-registration-page .ecwid-btn--add-to-cart,
-      body.wholesale-registration-page .ecwid-add-to-cart-button-container,
-      body.wholesale-registration-page .product-card-buy-icon,
-      body.wholesale-registration-page .ec-filter__item--price,
-      body.wholesale-registration-page .ec-price-filter { display: none !important; }
-    `;
-    return s;
-  });
-  document.body.classList.add("wholesale-registration-page");
+// Account/register DOM helpers and registration form rendering
+function queryAccountBody() {
+  return document.querySelector(".ec-cart__body-inner");
 }
-
-function renderWholesaleRegistrationPageShell(customer) {
-  const container =
-    document.querySelector(".ecwid-productBrowser") ||
-    document.querySelector(".ec-page") ||
-    document.body;
-
-  let root = document.getElementById("wholesale-registration-root");
+function hijackAccountBody(container) {
+  if (!container || container.dataset.wrHijacked === "1")
+    return document.getElementById("account-register-root");
+  Array.from(container.children).forEach((child) => {
+    if (child.id !== "account-register-root") {
+      child.setAttribute("data-wr-hidden", "1");
+      child.style.display = "none";
+    }
+  });
+  let root = document.getElementById("account-register-root");
   if (!root) {
     root = document.createElement("div");
-    root.id = "wholesale-registration-root";
-    root.style.background = "#fff";
-    root.style.border = "1px solid #eee";
-    root.style.borderRadius = "8px";
-    root.style.padding = "16px";
-    root.style.margin = "12px 0";
+    root.id = "account-register-root";
     container.prepend(root);
   }
-
-  const email = (customer && customer.email) || "";
-  const signedInBlock = email
-    ? `<div style="margin-bottom:8px;color:#555;">Signed in as: <strong>${email}</strong></div>`
-    : '<div style="margin-bottom:8px;color:#b00;">Please sign in to continue with wholesale registration.</div>';
-
-  root.innerHTML = [
-    '<h1 style="margin:0 0 8px;">Wholesale Registration</h1>',
-    signedInBlock,
-    '<div id="wr-error-summary" role="alert" aria-live="polite" style="display:none;margin-bottom:8px;color:#b00;"></div>',
-    '<form id="wholesale-reg-form" novalidate>',
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">',
-    // Email (readonly)
-    '<label style="grid-column:1/-1;display:block;">',
-    "<span>Email (read-only)</span><br>",
-    `<input id="wr-email" type="email" value="${email}" readonly disabled style="width:100%;padding:8px;">`,
-    "</label>",
-
-    // Name (required)
-    '<label style="display:block;">',
-    "<span>Name *</span><br>",
-    '<input id="wr-name" type="text" style="width:100%;padding:8px;" aria-invalid="false">',
-    '<div id="err-wr-name" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
-    "</label>",
-
-    // Company (required)
-    '<label style="display:block;">',
-    "<span>Company *</span><br>",
-    '<input id="wr-company" type="text" style="width:100%;padding:8px;" aria-invalid="false">',
-    '<div id="err-wr-company" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
-    "</label>",
-
-    // Country (required, ISO 2)
-    '<label style="display:block;">',
-    "<span>Country (ISO 2) *</span><br>",
-    '<input id="wr-country" type="text" maxlength="2" style="width:100%;padding:8px;text-transform:uppercase;" aria-invalid="false" placeholder="US">',
-    '<div id="err-wr-country" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
-    "</label>",
-
-    // Postal code (required)
-    '<label style="display:block;">',
-    "<span>Postal Code *</span><br>",
-    '<input id="wr-postal" type="text" style="width:100%;padding:8px;" aria-invalid="false">',
-    '<div id="err-wr-postal" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
-    "</label>",
-
-    // Phone (required)
-    '<label style="display:block;">',
-    "<span>Phone *</span><br>",
-    '<input id="wr-phone" type="tel" style="width:100%;padding:8px;" aria-invalid="false" placeholder="+1 555-555-5555">',
-    '<div id="err-wr-phone" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
-    "</label>",
-
-    // Cell phone (optional)
-    '<label style="display:block;">',
-    "<span>Cell Phone (optional)</span><br>",
-    '<input id="wr-cell" type="tel" style="width:100%;padding:8px;" aria-invalid="false">',
-    '<div id="err-wr-cell" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
-    "</label>",
-
-    // Tax ID (required)
-    '<label style="display:block;">',
-    "<span>Tax ID *</span><br>",
-    '<input id="wr-taxid" type="text" style="width:100%;padding:8px;" aria-invalid="false">',
-    '<div id="err-wr-taxid" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
-    "</label>",
-
-    // Referral (optional)
-    '<label style="display:block;">',
-    "<span>How did you hear about us? (optional)</span><br>",
-    '<input id="wr-referral" type="text" style="width:100%;padding:8px;" aria-invalid="false" placeholder="Search Engine, Friend, ...">',
-    '<div id="err-wr-referral" class="wr-field-error" aria-live="polite" style="color:#b00;font-size:12px;"></div>',
-    "</label>",
-
-    // Marketing consent (checkbox)
-    '<label style="grid-column:1/-1;display:flex;align-items:center;gap:8px;">',
-    '<input id="wr-marketing" type="checkbox">',
-    "<span>Sign me up for the newsletter</span>",
-    "</label>",
-    "</div>",
-
-    '<div style="margin-top:12px;display:flex;gap:8px;align-items:center;">',
-    '<button id="wr-submit" type="submit" style="padding:10px 14px;background:#0b5fff;color:#fff;border:none;border-radius:4px;font-weight:600;cursor:pointer;">Submit Registration</button>',
-    '<span id="wr-status" style="color:#555;"></span>',
-    "</div>",
-    "</form>",
-  ].join("");
-
-  if (!root.dataset.telemetryView) {
-    trackWholesaleEvent("wholesale_registration_view", {});
-    root.dataset.telemetryView = "1";
+  container.dataset.wrHijacked = "1";
+  return root;
+}
+function restoreAccountBody(container) {
+  if (!container) return;
+  Array.from(container.children).forEach((child) => {
+    if (child.id === "account-register-root") return;
+    if (child.getAttribute("data-wr-hidden") === "1") {
+      child.style.display = "";
+      child.removeAttribute("data-wr-hidden");
+    }
+  });
+  const root = document.getElementById("account-register-root");
+  if (root) root.remove();
+  delete container.dataset.wrHijacked;
+}
+let ACCOUNT_REGISTER_OBSERVER = null;
+function startAccountRegisterObserver(onChange) {
+  if (ACCOUNT_REGISTER_OBSERVER) return;
+  const container = queryAccountBody();
+  if (!container) return;
+  ACCOUNT_REGISTER_OBSERVER = new MutationObserver(() => onChange());
+  ACCOUNT_REGISTER_OBSERVER.observe(container, { childList: true });
+}
+function stopAccountRegisterObserver() {
+  if (ACCOUNT_REGISTER_OBSERVER) {
+    ACCOUNT_REGISTER_OBSERVER.disconnect();
+    ACCOUNT_REGISTER_OBSERVER = null;
   }
-
-  attachWholesaleRegistrationHandlers(root, customer);
 }
 
-function validateWholesaleRegistrationValues(values) {
-  const errors = {};
-  function req(v) {
-    return !!(v && String(v).trim());
-  }
-  const phoneRe = /^[+0-9()\-\s]{7,}$/;
-  const iso2 = /^[A-Za-z]{2}$/;
-
-  if (!req(values.name)) errors.name = "Name is required";
-  if (!req(values.companyName)) errors.companyName = "Company is required";
-  if (!req(values.countryCode) || !iso2.test(values.countryCode))
-    errors.countryCode = "Country must be a 2-letter code";
-  if (!req(values.postalCode)) errors.postalCode = "Postal code is required";
-  if (!req(values.phone) || !phoneRe.test(values.phone))
-    errors.phone = "Enter a valid phone number";
-  if (!req(values.taxId)) errors.taxId = "Tax ID is required";
-  return errors;
+let EXTRA_FIELD_DEFS_CACHE = null;
+function getCheckoutExtraFieldDefsFromEc() {
+  try {
+    const defs = window.ec?.order?.extraFields || window.ec?.checkout?.extraFields || null;
+    return defs && typeof defs === "object" ? defs : null;
+  } catch { return null; }
 }
-
-function updateWholesaleSubmitState({ submitting, statusText }) {
-  const btn = document.getElementById("wr-submit");
-  const status = document.getElementById("wr-status");
-  if (btn) btn.disabled = !!submitting;
-  if (btn) btn.textContent = submitting ? "Submitting…" : "Submit Registration";
-  if (status) status.textContent = statusText || "";
+async function postStorefrontCustomerUpdate(body) {
+  const { storeId } = await waitForEcwidAndTokens();
+  const url = `https://app.ecwid.com/storefront/api/v1/${storeId}/customer/update`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(body || { lang: "en" })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || data?.message || `customer/update ${res.status}`);
+  return data;
 }
-
-function showFieldError(id, message) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.textContent = message || "";
-  const inputMap = {
-    "err-wr-name": "wr-name",
-    "err-wr-company": "wr-company",
-    "err-wr-country": "wr-country",
-    "err-wr-postal": "wr-postal",
-    "err-wr-phone": "wr-phone",
-    "err-wr-taxid": "wr-taxid",
+function normalizeExtraDefs(map) {
+  const norm = (o) => !o ? null : ({
+    key: o.key || null,
+    title: o.title || "",
+    placeholder: o.textPlaceholder || "",
+    type: o.type || "text",
+    required: !!o.required,
+    options: Array.isArray(o.options) ? o.options.map(x => x.title) : null
+  });
+  const byTitle = (t) => {
+    const low = t.toLowerCase();
+    for (const k in map) if ((map[k]?.title || "").toLowerCase() === low) return map[k];
+    return null;
   };
-  const inputId = inputMap[id];
-  if (inputId) {
-    const input = document.getElementById(inputId);
-    if (input) input.setAttribute("aria-invalid", message ? "true" : "false");
-  }
+  const tax = norm(map["3w9kla3"] || byTitle("Tax ID"));
+  const hear = norm(map["bp4q9w3"] || byTitle("How did you hear about us?"));
+  const cell = norm(byTitle("Cell Phone"));
+  return { tax, hear, cell };
 }
-
-function clearFieldErrors() {
-  [
-    "err-wr-name",
-    "err-wr-company",
-    "err-wr-country",
-    "err-wr-postal",
-    "err-wr-phone",
-    "err-wr-taxid",
-    "err-wr-referral",
-    "err-wr-cell",
-  ].forEach((id) => showFieldError(id, ""));
-  const errSummary = document.getElementById("wr-error-summary");
-  if (errSummary) {
-    errSummary.textContent = "";
-    errSummary.style.display = "none";
+async function loadCheckoutExtraFieldDefsSafe() {
+  if (EXTRA_FIELD_DEFS_CACHE) return EXTRA_FIELD_DEFS_CACHE;
+  const ecDefs = getCheckoutExtraFieldDefsFromEc();
+  if (ecDefs) {
+    EXTRA_FIELD_DEFS_CACHE = normalizeExtraDefs(ecDefs);
+    return EXTRA_FIELD_DEFS_CACHE;
   }
-}
-
-function attachWholesaleRegistrationHandlers(root, customer) {
-  const form =
-    root && root.querySelector && root.querySelector("#wholesale-reg-form");
-  if (!form) return;
-
-  // Live validation to toggle button state
-  const requiredIds = [
-    "wr-name",
-    "wr-company",
-    "wr-country",
-    "wr-postal",
-    "wr-phone",
-    "wr-taxid",
-  ];
-  function computeValues() {
-    return {
-      email: (customer && customer.email) || "",
-      name: document.getElementById("wr-name").value.trim(),
-      companyName: document.getElementById("wr-company").value.trim(),
-      countryCode: document
-        .getElementById("wr-country")
-        .value.trim()
-        .toUpperCase(),
-      postalCode: document.getElementById("wr-postal").value.trim(),
-      phone: document.getElementById("wr-phone").value.trim(),
-      cellPhone: document.getElementById("wr-cell").value.trim(),
-      taxId: document.getElementById("wr-taxid").value.trim(),
-      referralSource: document.getElementById("wr-referral").value.trim(),
-      acceptMarketing: !!document.getElementById("wr-marketing").checked,
-      customerId: customer && customer.id,
+  try {
+    const resp = await postStorefrontCustomerUpdate({ lang: "en" });
+    const defs = resp?.checkoutSettings?.extraFields || {};
+    EXTRA_FIELD_DEFS_CACHE = normalizeExtraDefs(defs);
+  } catch {
+    EXTRA_FIELD_DEFS_CACHE = {
+      tax: { key: null, title: "Tax ID", placeholder: "Enter your tax identification number", type: "text", required: true },
+      hear: { key: null, title: "How did you hear about us?", placeholder: "", type: "select", options: ["Google","Wholesale Central","Referral","Retailing Insight","Other"] },
+      cell: { key: null, title: "Cell Phone", placeholder: "", type: "text", required: false }
     };
   }
+  return EXTRA_FIELD_DEFS_CACHE;
+}
 
-  function refreshSubmitEnabled() {
-    const v = computeValues();
-    const errs = validateWholesaleRegistrationValues(v);
-    const btn = document.getElementById("wr-submit");
-    if (btn) btn.disabled = Object.keys(errs).length > 0 || !v.customerId;
-  }
+function formRow(inner) { return `<div class="ec-form__row"><div class="ec-form__cell">${inner}</div></div>`; }
+function textInput({ id, label, value="", placeholder="", required=false, type="text", autocomplete="" }) {
+  const req = required ? '<div class="marker-required marker-required--medium"></div>' : '';
+  return `
+    <label for="${id}"><div class="ec-form__title ec-header-h6">${req}${label}</div></label>
+    <div class="form-control form-control--flexible">
+      <input id="${id}" class="form-control__text" type="${type}" maxlength="255" value="${value}"
+        ${autocomplete ? `autocomplete="${autocomplete}"` : ""} ${required ? "required" : ""}/>
+      <div class="form-control__placeholder"><div class="form-control__placeholder-inner">${placeholder || ""}</div></div>
+    </div>`;
+}
+function selectInput({ id, label, value="", options=[], required=false }) {
+  const req = required ? '<div class="marker-required marker-required--medium"></div>' : '';
+  const opts = options.map(o => `<option ${o===value?"selected":""}>${o}</option>`).join("");
+  return `
+    <label for="${id}"><div class="ec-form__title ec-header-h6">${req}${label}</div></label>
+    <div class="form-control form-control--flexible"><select id="${id}" class="form-control__text">${opts}</select></div>`;
+}
 
-  requiredIds.forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener("input", refreshSubmitEnabled);
+async function renderOrUpdateAccountRegister() {
+  const container = queryAccountBody();
+  if (!container) return;
+  const root = hijackAccountBody(container);
+  if (!root) return;
+  const customer = await fetchLoggedInCustomer();
+  const defs = await loadCheckoutExtraFieldDefsSafe();
+  const model = {
+    email: customer?.email || "",
+    name: customer?.billingPerson?.name || customer?.name || "",
+    phone: customer?.billingPerson?.phone || "",
+    companyName: customer?.billingPerson?.companyName || "",
+    postalCode: customer?.billingPerson?.postalCode || ""
+  };
+  root.innerHTML = `
+    <div>
+      <p><span class="ec-cart-step__mandatory-fields-notice">All fields are required unless they’re explicitly marked as optional.</span></p>
+      <form id="wr-acc-form" class="ec-form" action onsubmit="return false">
+        ${formRow(textInput({ id:"wr-email-ro", label:"Email", value:model.email, type:"email" }))}
+        ${formRow(`
+          <div class="ec-form__cell ec-form__cell--8 ec-form__cell-name">
+            ${textInput({ id:"wr-name", label:"First and last name", value:model.name, required:true, autocomplete:"shipping name" })}
+          </div>
+          <div class="ec-form__cell ec-form__cell--4 ec-form__cell--phone">
+            ${textInput({ id:"wr-phone", label:"Phone", value:model.phone, required:true, autocomplete:"shipping tel", type:"tel" })}
+          </div>
+        `)}
+        ${formRow(textInput({ id:"wr-company", label:"Company name", value:model.companyName, required:true, autocomplete:"shipping organization" }))}
+        ${formRow(textInput({ id:"wr-zip", label:"ZIP / Postal code", value:model.postalCode, required:true, autocomplete:"shipping postal-code" }))}
+        ${defs?.tax ? formRow(textInput({ id:"wr-tax", label:defs.tax.title || "Tax ID", required:!!defs.tax.required, placeholder:defs.tax.placeholder })) : ""}
+        ${defs?.cell ? formRow(textInput({ id:"wr-cell", label:defs.cell.title || "Cell Phone", placeholder:defs.cell.placeholder, type:"tel" })) : ""}
+        ${defs?.hear ? formRow((defs.hear.type==="select" && defs.hear.options?.length)
+          ? selectInput({ id:"wr-hear", label:defs.hear.title || "How did you hear about us?", options:defs.hear.options })
+          : textInput({ id:"wr-hear", label:defs.hear.title || "How did you hear about us?", placeholder:defs.hear.placeholder })
+        ) : ""}
+        <div class="ec-form__row ec-form__row--continue">
+          <div class="ec-form__cell ec-form__cell--6">
+            <div class="form-control form-control--button form-control--large form-control--primary form-control--flexible form-control--done">
+              <button id="wr-acc-submit" class="form-control__button" type="button">
+                <div class="form-control__loader"></div>
+                <span class="form-control__button-text">Continue</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div id="wr-acc-msg" class="form__msg" style="margin-top:8px;"></div>
+      </form>
+    </div>`;
+  attachAccountRegisterHandlers(root, defs);
+}
+
+function buildStorefrontUpdatePayload(values, defs) {
+  const updatedCustomer = {
+    name: values.name,
+    billingPerson: {
+      name: values.name || "",
+      companyName: values.companyName || "",
+      postalCode: values.postalCode || "",
+      phone: values.phone || ""
+    }
+  };
+  const extraFields = {};
+  const mapToUpdate = {};
+  const push = (def, val) => {
+    if (!def || !val) return;
+    const key = def.key || def.title;
+    mapToUpdate[key] = {
+      title: def.title, type: def.type || "text",
+      available: true, required: !!def.required, cpField: true
+    };
+    extraFields[key] = { title: def.title, value: val };
+  };
+  push(defs.tax, values.taxId);
+  push(defs.cell, values.cellPhone);
+  push(defs.hear, values.hear);
+
+  return {
+    updatedCustomer,
+    checkout: {
+      extraFields,
+      removedExtraFieldsKeys: [],
+      extraFieldsPayload: { mapToUpdate, keysToRemove: [], updateMode: "UPDATE_HIDDEN" }
+    },
+    lang: "en"
+  };
+}
+
+function attachAccountRegisterHandlers(root, defs) {
+  const getVals = () => ({
+    name: document.getElementById("wr-name")?.value.trim() || "",
+    phone: document.getElementById("wr-phone")?.value.trim() || "",
+    companyName: document.getElementById("wr-company")?.value.trim() || "",
+    postalCode: document.getElementById("wr-zip")?.value.trim() || "",
+    taxId: document.getElementById("wr-tax")?.value.trim() || "",
+    cellPhone: document.getElementById("wr-cell")?.value.trim() || "",
+    hear: document.getElementById("wr-hear")?.value || ""
   });
-
-  refreshSubmitEnabled();
-
-  form.addEventListener("submit", async function (e) {
-    e.preventDefault();
-    clearFieldErrors();
-
-    const values = computeValues();
-    const errs = validateWholesaleRegistrationValues(values);
-    if (Object.keys(errs).length > 0) {
-      // Show inline errors and summary
-      if (errs.name) showFieldError("err-wr-name", errs.name);
-      if (errs.companyName) showFieldError("err-wr-company", errs.companyName);
-      if (errs.countryCode) showFieldError("err-wr-country", errs.countryCode);
-      if (errs.postalCode) showFieldError("err-wr-postal", errs.postalCode);
-      if (errs.phone) showFieldError("err-wr-phone", errs.phone);
-      if (errs.taxId) showFieldError("err-wr-taxid", errs.taxId);
-      const errSummary = document.getElementById("wr-error-summary");
-      if (errSummary) {
-        errSummary.textContent = "Please correct the highlighted fields.";
-        errSummary.style.display = "block";
-      }
+  const btn = root.querySelector("#wr-acc-submit");
+  const msg = root.querySelector("#wr-acc-msg");
+  btn?.addEventListener("click", async () => {
+    const v = getVals();
+    if (!v.name || !v.phone || !v.companyName || !v.postalCode || (defs.tax?.required && !v.taxId)) {
+      msg.textContent = "Please complete the required fields.";
       return;
     }
-
-    if (!values.customerId) {
-      const errSummary = document.getElementById("wr-error-summary");
-      if (errSummary) {
-        errSummary.textContent =
-          "Please sign in before submitting the registration.";
-        errSummary.style.display = "block";
-      }
-      return;
-    }
-
+    btn.disabled = true;
+    msg.textContent = "Saving…";
     try {
-      updateWholesaleSubmitState({
-        submitting: true,
-        statusText: "Submitting registration…",
-      });
-      trackWholesaleEvent("wholesale_registration_submit", {
-        acceptMarketing: !!values.acceptMarketing,
-      });
-      // Submit via Ecwid REST
-      await ecwidSubmitWholesaleRegistration({
-        customerId: values.customerId,
-        email: values.email,
-        name: values.name,
-        companyName: values.companyName,
-        countryCode: values.countryCode,
-        postalCode: values.postalCode,
-        phone: values.phone,
-        cellPhone: values.cellPhone,
-        taxId: values.taxId,
-        referralSource: values.referralSource,
-        acceptMarketing: values.acceptMarketing,
-      });
-
-      // Confirm approval then refresh/redirect
-      let approved = false;
-      try {
-        const status = await ecwidGetWholesaleStatus(values.customerId);
-        approved = !!(status && status.isWholesaleApproved);
-      } catch (_) {}
-
-      if (approved) {
-        try {
-          if (typeof window.triggerWholesaleVisibilityRefresh === "function")
-            window.triggerWholesaleVisibilityRefresh();
-        } catch (_) {}
-        updateWholesaleSubmitState({
-          submitting: false,
-          statusText: "Success. Redirecting…",
-        });
-        trackWholesaleEvent("wholesale_registration_success", {});
-        setTimeout(function () {
-          window.location.href = "/products";
-        }, 400);
-      } else {
-        updateWholesaleSubmitState({
-          submitting: false,
-          statusText: "Registration submitted. Awaiting approval.",
-        });
-      }
-    } catch (err) {
-      console.warn("Wholesale Reg: submission failed", err);
-      trackWholesaleEvent("wholesale_registration_failure", {});
-      updateWholesaleSubmitState({ submitting: false, statusText: "" });
-      const errSummary = document.getElementById("wr-error-summary");
-      if (errSummary) {
-        if (err && (err.status === 401 || err.status === 403)) {
-          errSummary.textContent =
-            "Store authorization is not available. Please contact support.";
-        } else {
-          errSummary.textContent =
-            (err && err.message) || "Submission failed. Please try again.";
-        }
-        errSummary.style.display = "block";
-      }
+      const body = buildStorefrontUpdatePayload(v, defs);
+      await postStorefrontCustomerUpdate(body);
+      msg.textContent = "Saved.";
+      if (typeof Ecwid.refreshConfig === "function") Ecwid.refreshConfig();
+    } catch {
+      msg.textContent = "Save failed. Please try again.";
+    } finally {
+      btn.disabled = false;
     }
   });
 }
