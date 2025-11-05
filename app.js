@@ -946,12 +946,23 @@ function selectInput({ id, label, value="", options=[], required=false }) {
     <label for="${id}"><div class="ec-form__title ec-header-h6">${req}${label}</div></label>
     <div class="form-control form-control--flexible"><select id="${id}" class="form-control__text">${opts}</select></div>`;
 }
+function checkboxInput({ id, label, checked=false }) {
+  return `
+    <div class="form-control form-control--checkbox">
+      <input id="${id}" type="checkbox" ${checked ? "checked" : ""} />
+      <label for="${id}"><span class="form-control__checkbox-label">${label}</span></label>
+    </div>`;
+}
+function getCountryOptions() {
+  return ["US","CA","GB","AU","NZ","FR","DE","IT","ES","NL","BE","CH","AT","SE","DK","NO","FI","IE","PL","CZ","PT","GR","HU","RO","BG","HR","LT","LV","EE","SI","SK","LU","MT","CY","MX","BR","AR","CL","CO","PE","VE","EC","UY","PY","BO","CR","PA","GT","HN","SV","NI","DO","CU","JM","TT","BS","BB","BZ","GY","SR","GF","FK","AE","SA","IL","TR","EG","ZA","NG","KE","GH","MA","TN","DZ","ET","UG","TZ","SN","CI","CM","AO","ZW","MZ","MW","ZM","BW","NA","RW","MU","SC","MG","RE","YT","KM","DJ","SO","ER","SD","LY","TG","BJ","BF","ML","NE","TD","MR","GM","GN","SL","LR","GW","ST","CV","IN","CN","JP","KR","SG","MY","TH","ID","PH","VN","BD","PK","LK","NP","MM","KH","LA","BN","MO","HK","TW","MN","KZ","UZ","TM","TJ","KG","AF","IR","IQ","JO","LB","SY","YE","OM","KW","BH","QA","AM","AZ","GE","RU","UA","BY","MD","RO","BG","RS","HR","BA","ME","MK","AL","XK","SI","SK","CZ","PL","HU","LT","LV","EE","IS","GL","FO","SJ","AX"];
+}
 
 async function renderOrUpdateAccountRegister() {
   const container = queryAccountBody();
   if (!container) return;
   const root = hijackAccountBody(container);
   if (!root) return;
+  trackWholesaleEvent("wholesale_registration_view", {});
   const customer = await fetchLoggedInCustomer();
   const defs = await loadCheckoutExtraFieldDefsSafe();
   const model = {
@@ -959,13 +970,20 @@ async function renderOrUpdateAccountRegister() {
     name: customer?.billingPerson?.name || customer?.name || "",
     phone: customer?.billingPerson?.phone || "",
     companyName: customer?.billingPerson?.companyName || "",
-    postalCode: customer?.billingPerson?.postalCode || ""
+    postalCode: customer?.billingPerson?.postalCode || "",
+    countryCode: customer?.billingPerson?.countryCode || "US",
+    acceptMarketing: customer?.acceptMarketing || false
   };
   root.innerHTML = `
     <div>
-      <p><span class="ec-cart-step__mandatory-fields-notice">All fields are required unless they’re explicitly marked as optional.</span></p>
+      <p><span class="ec-cart-step__mandatory-fields-notice">All fields are required unless they're explicitly marked as optional.</span></p>
       <form id="wr-acc-form" class="ec-form" action onsubmit="return false">
-        ${formRow(textInput({ id:"wr-email-ro", label:"Email", value:model.email, type:"email" }))}
+        ${formRow(`
+          <label for="wr-email-ro"><div class="ec-form__title ec-header-h6">Email</div></label>
+          <div class="form-control form-control--flexible">
+            <input id="wr-email-ro" class="form-control__text" type="email" value="${model.email}" disabled style="background:#f5f5f5;color:#666;cursor:not-allowed;" />
+          </div>
+        `)}
         ${formRow(`
           <div class="ec-form__cell ec-form__cell--8 ec-form__cell-name">
             ${textInput({ id:"wr-name", label:"First and last name", value:model.name, required:true, autocomplete:"shipping name" })}
@@ -975,13 +993,21 @@ async function renderOrUpdateAccountRegister() {
           </div>
         `)}
         ${formRow(textInput({ id:"wr-company", label:"Company name", value:model.companyName, required:true, autocomplete:"shipping organization" }))}
-        ${formRow(textInput({ id:"wr-zip", label:"ZIP / Postal code", value:model.postalCode, required:true, autocomplete:"shipping postal-code" }))}
+        ${formRow(`
+          <div class="ec-form__cell ec-form__cell--8">
+            ${textInput({ id:"wr-zip", label:"ZIP / Postal code", value:model.postalCode, required:true, autocomplete:"shipping postal-code" })}
+          </div>
+          <div class="ec-form__cell ec-form__cell--4">
+            ${selectInput({ id:"wr-country", label:"Country", value:model.countryCode, options:getCountryOptions(), required:true })}
+          </div>
+        `)}
         ${defs?.tax ? formRow(textInput({ id:"wr-tax", label:defs.tax.title || "Tax ID", required:!!defs.tax.required, placeholder:defs.tax.placeholder })) : ""}
         ${defs?.cell ? formRow(textInput({ id:"wr-cell", label:defs.cell.title || "Cell Phone", placeholder:defs.cell.placeholder, type:"tel" })) : ""}
         ${defs?.hear ? formRow((defs.hear.type==="select" && defs.hear.options?.length)
           ? selectInput({ id:"wr-hear", label:defs.hear.title || "How did you hear about us?", options:defs.hear.options })
           : textInput({ id:"wr-hear", label:defs.hear.title || "How did you hear about us?", placeholder:defs.hear.placeholder })
         ) : ""}
+        ${formRow(checkboxInput({ id:"wr-marketing", label:"I would like to receive marketing emails", checked:model.acceptMarketing }))}
         <div class="ec-form__row ec-form__row--continue">
           <div class="ec-form__cell ec-form__cell--6">
             <div class="form-control form-control--button form-control--large form-control--primary form-control--flexible form-control--done">
@@ -1001,11 +1027,13 @@ async function renderOrUpdateAccountRegister() {
 function buildStorefrontUpdatePayload(values, defs) {
   const updatedCustomer = {
     name: values.name,
+    acceptMarketing: !!values.acceptMarketing,
     billingPerson: {
       name: values.name || "",
       companyName: values.companyName || "",
       postalCode: values.postalCode || "",
-      phone: values.phone || ""
+      phone: values.phone || "",
+      countryCode: values.countryCode || "US"
     }
   };
   const extraFields = {};
@@ -1040,29 +1068,113 @@ function attachAccountRegisterHandlers(root, defs) {
     phone: document.getElementById("wr-phone")?.value.trim() || "",
     companyName: document.getElementById("wr-company")?.value.trim() || "",
     postalCode: document.getElementById("wr-zip")?.value.trim() || "",
+    countryCode: document.getElementById("wr-country")?.value || "US",
+    acceptMarketing: document.getElementById("wr-marketing")?.checked || false,
     taxId: document.getElementById("wr-tax")?.value.trim() || "",
     cellPhone: document.getElementById("wr-cell")?.value.trim() || "",
     hear: document.getElementById("wr-hear")?.value || ""
   });
+
+  const clearErrors = () => {
+    root.querySelectorAll(".form-control--error").forEach(el => el.classList.remove("form-control--error"));
+    root.querySelectorAll(".form__msg--error").forEach(el => el.remove());
+    root.querySelectorAll("[aria-invalid]").forEach(el => el.removeAttribute("aria-invalid"));
+  };
+
+  const showFieldError = (fieldId, message) => {
+    const input = document.getElementById(fieldId);
+    if (!input) return;
+    const control = input.closest(".form-control");
+    if (control) {
+      control.classList.add("form-control--error");
+      const errDiv = document.createElement("div");
+      errDiv.className = "form__msg form__msg--error";
+      errDiv.id = `${fieldId}-msg`;
+      errDiv.textContent = message;
+      control.appendChild(errDiv);
+      input.setAttribute("aria-invalid", "true");
+      input.setAttribute("aria-describedby", `${fieldId}-msg`);
+    }
+  };
+
+  const validateCountryCode = (code) => {
+    const validCodes = getCountryOptions();
+    return validCodes.includes(code);
+  };
+
   const btn = root.querySelector("#wr-acc-submit");
   const msg = root.querySelector("#wr-acc-msg");
+
   btn?.addEventListener("click", async () => {
+    clearErrors();
     const v = getVals();
-    if (!v.name || !v.phone || !v.companyName || !v.postalCode || (defs.tax?.required && !v.taxId)) {
-      msg.textContent = "Please complete the required fields.";
+
+    // Validate required fields
+    let firstInvalid = null;
+    const setInvalid = (id, message) => {
+      showFieldError(id, message);
+      if (!firstInvalid) firstInvalid = document.getElementById(id);
+    };
+
+    if (!v.name) setInvalid("wr-name", "Name is required");
+    if (!v.phone) setInvalid("wr-phone", "Phone is required");
+    if (!v.companyName) setInvalid("wr-company", "Company name is required");
+    if (!v.postalCode) setInvalid("wr-zip", "ZIP / Postal code is required");
+    if (!v.countryCode) setInvalid("wr-country", "Country is required");
+    else if (!validateCountryCode(v.countryCode)) setInvalid("wr-country", "Invalid country code");
+    if (defs.tax?.required && !v.taxId) setInvalid("wr-tax", "Tax ID is required");
+
+    if (firstInvalid) {
+      firstInvalid.focus();
       return;
     }
-    btn.disabled = true;
+
+    trackWholesaleEvent("wholesale_registration_submit", {});
     msg.textContent = "Saving…";
+    msg.className = "form__msg";
+
     try {
       const body = buildStorefrontUpdatePayload(v, defs);
       await postStorefrontCustomerUpdate(body);
-      msg.textContent = "Saved.";
-      if (typeof Ecwid.refreshConfig === "function") Ecwid.refreshConfig();
-    } catch {
-      msg.textContent = "Save failed. Please try again.";
-    } finally {
-      btn.disabled = false;
+      trackWholesaleEvent("wholesale_registration_success", {});
+      msg.textContent = "Registration submitted successfully!";
+      msg.className = "form__msg";
+
+      // Refresh Ecwid config
+      if (typeof Ecwid.refreshConfig === "function") {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        Ecwid.refreshConfig();
+      }
+
+      // Redirect to /products with success banner
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      showRegistrationSuccessBanner();
+      window.location.href = "/products";
+    } catch (err) {
+      trackWholesaleEvent("wholesale_registration_failure", { error: err.message });
+      msg.textContent = "Registration failed. Please try again.";
+      msg.className = "form__msg form__msg--error";
     }
   });
+}
+
+function showRegistrationSuccessBanner() {
+  const id = "wholesale-success-banner";
+  removeNodeById(id);
+  const banner = document.createElement("div");
+  banner.id = id;
+  banner.className = "wholesale-success-banner";
+  banner.style.position = "fixed";
+  banner.style.top = "0";
+  banner.style.left = "0";
+  banner.style.right = "0";
+  banner.style.zIndex = "10000";
+  banner.style.background = "#4caf50";
+  banner.style.color = "#fff";
+  banner.style.padding = "12px 16px";
+  banner.style.textAlign = "center";
+  banner.style.fontWeight = "600";
+  banner.innerHTML = "Your wholesale registration has been submitted. We will review your application and update your account shortly.";
+  document.body.appendChild(banner);
+  setTimeout(() => removeNodeById(id), 8000);
 }
