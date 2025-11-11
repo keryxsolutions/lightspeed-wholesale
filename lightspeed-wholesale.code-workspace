@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../esprit-creations/migration"
+		},
+		{
+			"path": "../lightspeed-wholesale-server"
+		}
+	],
+	"settings": {}
+}

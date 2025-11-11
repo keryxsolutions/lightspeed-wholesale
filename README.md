@@ -1,13 +1,24 @@
 # Lightspeed eCom Custom App — Wholesale, Category Banner, Product Tags, Registration
 
-This custom app enhances a Lightspeed (Ecwid) storefront with:
+This custom app enhances a Lightspeed (Ecwid) storefront with four integrated features:
 
-- Wholesale price visibility control (hide for guests, show for logged-in)
-- Category banner with text overlay (full-width image + description overlay)
-- Product tag display from product attributes (TAGS)
-- Wholesale registration flow (banner + /wholesale-registration page shell)
+- **Wholesale Price Visibility Control** — Hide prices/buy buttons for guests and non-wholesale customers
+- **Category Banners** — Full-width image hero banners with description overlays
+- **Product Tags** — Display tags from TAGS attributes below product descriptions
+- **Wholesale Registration Flow** — Account-based registration form on `/products/account/register`
 
-All functionality runs on the storefront. Category images and product attributes are fetched via Ecwid REST using the app public token resolved at runtime. Uses Ecwid REST with the app public token; no custom backend required.
+All functionality runs client-side on the storefront. Uses Ecwid Storefront JS API and REST API with public token; no custom backend required.
+
+## Product Requirements
+
+For detailed specifications, acceptance criteria, and implementation notes, see:
+
+- **[Registration](docs/registration.prd)** — Wholesale registration flow with form prefill and submission
+- **[Wholesale Gating](docs/wholesale-gating.prd)** — Price visibility control and customer group detection
+- **[Category Banners](docs/category-banners.prd)** — Hero banner rendering with image and text overlays
+- **[Product Tags](docs/product-tags.prd)** — Tag display from product attributes with placeholder links
+
+**Master PRD Index:** [docs/wholesale-registration-master.prd](docs/wholesale-registration-master.prd) — Overview and cross-cutting concerns
 
 ## Files Overview
 
@@ -81,28 +92,40 @@ Provide to support:
 - Assumes product prices are turned OFF by default in design settings
 - Works across SPA navigation via `Ecwid.OnPageLoaded`
 
-## Wholesale Registration Flow (Ecwid REST)
+## Wholesale Registration Flow
 
-Features
-- A sticky banner prompts guests and non-approved users to register
-- Visiting `/wholesale-registration` renders a page shell with a form
-- Submission updates the customer using Ecwid REST: ensures required Customer Extra Fields exist, updates profile, and assigns the wholesale group
-- After success, the app re-checks wholesale status, refreshes storefront config, and redirects to `/products`
+### Features
+- Banner prompts logged-in, non-wholesale users to register
+- Custom form injects on `/products/account/register` (hijacks account page container)
+- Prefills from `Ecwid.Customer.get()`: name, phone, company, postal code, country, email (read-only)
+- Submits via Storefront API: `POST /storefront/api/v1/{storeId}/customer/update`
+- Group assignment handled server-side by Ecwid Automations/Webhooks
+- After success, refreshes storefront config to update price visibility
 
-Ecwid REST Endpoints Used
-- GET `/api/v3/{storeId}/customers/{customerId}` — wholesale status check
-- GET `/api/v3/{storeId}/customer_groups` — resolve wholesale group by name
-- GET `/api/v3/{storeId}/store_extrafields/customers` — list extra fields
-- POST `/api/v3/{storeId}/store_extrafields/customers` — create extra fields (by title)
-- PUT `/api/v3/{storeId}/customers/{customerId}` — update billingPerson, acceptMarketing, extraFields, and set customerGroupId
+### Current Implementation Status
+✅ **Phase 1 Complete:**
+- Form injection and prefill
+- Basic field persistence (name, taxId, acceptMarketing, contacts)
+- Form validation and error handling
+- Telemetry tracking
 
-Configuration Overrides
-- `window.WHOLESALE_GROUP_NAME` — wholesale group display name (default: "Wholesaler")
+🔄 **Phase 2 Pending:**
+- billingPerson field persistence (currently commented out)
+- Customer extra fields persistence (Tax ID, Cell Phone, referral source)
+- Success redirect to `/products` (disabled for debugging)
+- Success banner display
 
-Telemetry
-- Console-backed events:
-  - `wholesale_banner_shown`, `wholesale_banner_click`
-  - `wholesale_registration_view`, `wholesale_registration_submit`, `wholesale_registration_success`, `wholesale_registration_failure`
+### Configuration
+- `window.WHOLESALE_GROUP_NAME` — Wholesale customer group name (default: `"Wholesaler"`)
+- Feature flags in `WHOLESALE_FLAGS`:
+  - `ENABLE_WHOLESALE_REGISTRATION` — Enable/disable registration feature
+  - `ENABLE_WHOLESALE_BANNER` — Show/hide registration prompt banner
+
+### Telemetry
+Console-backed events (see [registration.prd](docs/registration.prd) for details):
+- `wholesale_banner_shown`, `wholesale_banner_click`
+- `wholesale_registration_view`, `wholesale_registration_submit`
+- `wholesale_registration_success`, `wholesale_registration_failure`
 
 ## Deployment Checklist
 - [ ] Host/update `app.js` on GitHub Pages

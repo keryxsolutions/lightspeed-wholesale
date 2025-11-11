@@ -1,0 +1,235 @@
+# PRD — Wholesale Registration
+
+**Version:** 1.0 (current state)
+**Owner:** Keryx Solutions
+**Status:** Active
+
+---
+
+## 1. Summary
+
+Inject a registration form into `/products/account/register` for logged-in, non-wholesale users. Prefill customer data from `Ecwid.Customer.get()`. Save core profile fields via storefront `/customer/update` endpoint. Group assignment occurs server-side via Ecwid Automations or Webhooks (not handled by client code).
+
+---
+
+## 2. Current Behavior (as implemented)
+
+### Route
+- Path: `/products/account/register` (both hash and pathname routing supported)
+- Triggered for logged-in users who are **not** wholesale members
+- Form hijacks `.ec-cart__body-inner` container on account pages
+
+### Prefill Sources
+Data populated from `Ecwid.Customer.get()`:
+- Email (rendered read-only)
+- Name
+- Phone
+- Company Name
+- Postal Code
+- Country Code (limited to US, UM, VI — intentional constraint)
+- Accept Marketing consent
+
+### Extra Field Definitions
+- Source: `Ecwid.getAppPublicConfig(clientId)["extraFields"]`
+- Expected shape: `{ items: [{ key, title, type, textPlaceholder, required, options? }] }`
+- Fallback: Discovery via `/storefront/api/v1/{storeId}/customer/update` response parsing
+
+### Submission Behavior
+Submits to: `POST /storefront/api/v1/{storeId}/customer/update`
+
+**Currently Persisted:**
+- `updatedCustomer.name`
+- `updatedCustomer.acceptMarketing` and `updatedCustomer.isAcceptedMarketing`
+- `updatedCustomer.taxId`
+- `updatedCustomer.contacts` (PHONE type for main phone)
+
+**Not Yet Persisted:**
+- `billingPerson.*` fields (commented out in `buildStorefrontUpdatePayload()`)
+- `updatedCustomer.extraFields` (customer-level extra fields)
+- `checkout.extraFields` payload map
+- Cell Phone as customer extra field (form collects it but doesn't send)
+
+**Group Assignment:**
+- `customerGroupId` is included in payload stub but **ignored by endpoint**
+- Actual group assignment handled server-side via Automations/Webhooks triggered after customer update
+
+**Post-Submit:**
+- Success redirect to `/products` is present in code but disabled for debugging purposes
+- No success banner currently shown (will be enabled when redirect is re-enabled)
+
+### Country Options
+Limited to:
+- US (United States)
+- UM (U.S. Minor Outlying Islands)
+- VI (U.S. Virgin Islands)
+
+This is an **intentional constraint** for the current deployment.
+
+---
+
+## 3. Target Behavior (future delta)
+
+### Expanded Persistence
+- Persist `billingPerson` fields:
+  - `name`
+  - `companyName`
+  - `postalCode`
+  - `phone`
+  - `countryCode`
+- Persist customer extra fields:
+  - Tax ID (already done via `taxId`)
+  - Cell Phone (as customer extra field or via `contacts`)
+  - How did you hear about us?
+- Send `checkout.extraFields` map if required by Ecwid API updates
+
+### Post-Success Flow
+- Execute redirect to `/products` (currently disabled for debugging)
+- Show success banner on redirect destination
+- Clear session cache of registration state
+
+### Potential Future Enhancements
+- Expand country list to ISO-3166-1 alpha-2 full set (if business requirements change)
+- Add server-side validation summary display for storefront API errors
+- Progressive enhancement: validate Tax ID format client-side before submit
+
+---
+
+## 4. APIs and Contracts
+
+### Read APIs
+- `Ecwid.Customer.get(callback)` — Current customer session data
+- `Ecwid.getAppPublicConfig(clientId)["extraFields"]` — Extra field definitions (preferred source)
+- Fallback: Parse `checkoutSettings.extraFields` from `/customer/update` response
+
+### Write APIs
+- `POST https://app.ecwid.com/storefront/api/v1/{storeId}/customer/update`
+  - Requires `credentials: include` (sends session cookie)
+  - Payload structure:
+    ```json
+    {
+      "updatedCustomer": {
+        "name": "...",
+        "taxId": "...",
+        "acceptMarketing": true,
+        "isAcceptedMarketing": true,
+        "contacts": [{ "type": "PHONE", "value": "..." }]
+      },
+      "lang": "en"
+    }
+    ```
+  - **Note:** `billingPerson` and extra fields support will be added in future iteration
+
+---
+
+## 5. Constraints
+
+- **No Admin Tokens on Storefront:** All operations must use storefront-scoped APIs
+- **Group Assignment:** Must be handled server-side; client cannot directly assign customer groups
+- **Session Cookie Required:** `/customer/update` endpoint requires authenticated session
+- **SPA Navigation:** Must handle Ecwid's SPA page transitions via MutationObserver
+- **Country List:** Currently restricted to US territories (business constraint)
+
+---
+
+## 6. Acceptance Criteria (current implementation)
+
+- ✅ Form injects on `/products/account/register` route
+- ✅ Email field is prefilled and read-only
+- ✅ Name, phone, company, postal code, country are prefilled from customer data
+- ✅ Required field validation prevents submission when empty
+- ✅ Submit updates `name`, `taxId`, `acceptMarketing`, and `contacts.PHONE`
+- ✅ Form persists during SPA redraws via MutationObserver
+- ✅ Form removed when navigating away from registration route
+- ✅ Telemetry events fire: `wholesale_registration_view`, `wholesale_registration_submit`, `wholesale_registration_success`, `wholesale_registration_failure`
+- ⚠️ Redirect to `/products` disabled (debugging mode)
+- ❌ Extra fields not yet persisted (target behavior)
+
+---
+
+## 7. Acceptance Criteria (target implementation)
+
+- ✅ All current criteria (above)
+- ⬜ `billingPerson` fields persisted on submit
+- ⬜ Customer extra fields (Tax ID, Cell Phone, referral source) persisted
+- ⬜ Success redirect to `/products` executed
+- ⬜ Success banner displayed after redirect
+- ⬜ Group assignment triggered server-side and reflected in session within 5 seconds
+
+---
+
+## 8. DOM and CSS
+
+### Injection Points
+- Container: `.ec-cart__body-inner` (hijacked on account pages)
+- Custom root: `#account-register-root` (inserted, hides existing children)
+
+### Classes
+- Form wrapper: `.wholesale-register-form`
+- Field groups: `.form-group`
+- Submit button: `.btn-primary`
+- Error messages: `.error-message`
+
+### Styles
+- Banner styles defined in `app.css` (`.wholesale-registration-banner`)
+- Form styles inlined via `<style>` tag or in `app.css`
+
+---
+
+## 9. Telemetry
+
+All events tracked via `trackWholesaleEvent(name, props)`:
+
+| Event | Trigger | Properties |
+|-------|---------|------------|
+| `wholesale_registration_view` | Form rendered | `{ route, timestamp }` |
+| `wholesale_registration_submit` | Submit clicked | `{ hasCompany, hasTaxId, timestamp }` |
+| `wholesale_registration_success` | API success | `{ duration, timestamp }` |
+| `wholesale_registration_failure` | API error | `{ error, status, timestamp }` |
+
+---
+
+## 10. Open Questions
+
+- **Storage Contract Clarification:** Confirm `Ecwid.getAppPublicConfig(clientId)["extraFields"]` as the canonical source for extra field definitions (vs. `Ecwid.getAppStorageData("public", "extrafields")`)
+  - **Decision:** Use `getAppPublicConfig` as primary source
+- **Cell Phone Mapping:** Should Cell Phone be stored as both `contacts[].type=MOBILE` AND as a customer extra field?
+  - Recommendation: Store in `contacts` only unless business logic requires searchable extra field
+- **Country Expansion:** What triggers expanding the country list beyond US territories?
+  - Current: Intentionally limited; revisit when international wholesale is enabled
+
+---
+
+## 11. Dependencies
+
+### Upstream (Required for this feature)
+- Wholesale Gating module (for detecting wholesale membership status)
+- `waitForEcwidAndTokens()` utility (for Ecwid API readiness)
+- `trackWholesaleEvent()` telemetry function
+
+### Downstream (Features that depend on Registration)
+- Server-side Automation or Webhook for group assignment
+- Wholesale Banner module (displays prompt to register)
+
+---
+
+## 12. Future Modularization Notes
+
+When splitting into standalone app:
+- Extract shared utilities: `waitForEcwidAndTokens`, `trackWholesaleEvent`, `isAccountRegisterPath`
+- Publish as separate Ecwid app with own `manifest.json`
+- Coordinate group assignment via shared Automation template
+- Consider shared design system for form components across apps
+
+---
+
+## 13. References
+
+- **Storefront Customer API:** https://docs.ecwid.com/storefronts/manage-customers-on-the-storefront
+- **OnPageLoaded Events:** https://docs.ecwid.com/storefronts/track-storefront-events/page-is-loaded-events
+- **App Public Config:** https://docs.ecwid.com/develop-apps/app-settings (getAppPublicConfig method)
+- **Implementation:** `/app.js` lines 670-1068 (`initializeWholesaleRegistration`)
+
+---
+
+**Last Updated:** 2025-11-11
+**Implementation Status:** ✅ Phase 1 Complete (core form and basic persistence) | 🔄 Phase 2 Pending (extra fields, redirect, billing address)

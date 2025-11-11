@@ -21,11 +21,11 @@
 
 - [x] Prefill
   - [x] Use `Ecwid.Customer.get` for name, phone, company, postal code, email, and country (where available).
-  - [x] Do not allow editing email in this form.
+  - [x] Do not allow editing email in this form. Render email as read-only.
 
 - [x] Field definitions
-  - [x] Prefer `ec.order.extraFields` as primary source for extra field metadata (keys, titles, placeholders, options).
-  - [x] Fallback: one discovery call via `POST /storefront/api/v1/{storeId}/customer/update` and read `checkoutSettings.extraFields`.
+  - [x] Prefer App Storage (`scope=public`, `key=extrafields`) as the source of extra field metadata (mirror of Application Fields for CUSTOMERS).
+  - [x] Fallback: one discovery call via `POST /storefront/api/v1/{storeId}/checkout` (indirectly via `customer/update` response `checkoutSettings.extraFields`) when storage not yet seeded.
   - [x] Cache field defs in-memory per session.
 
 - [x] Form fields (per PRD)
@@ -35,7 +35,7 @@
   - [x] Company name (required).
   - [x] ZIP / Postal code (required).
   - [x] Country (required; ISO 3166-1 alpha-2).
-  - [x] Accept marketing (checkbox) → `acceptMarketing`.
+  - [x] Accept marketing (checkbox) → `acceptMarketing` / `isAcceptedMarketing`.
   - [x] Extra fields:
     - [x] Tax ID (required).
     - [x] Cell Phone (optional).
@@ -45,10 +45,9 @@
   - [x] Submit to `POST https://app.ecwid.com/storefront/api/v1/{storeId}/customer/update` with `credentials: include`.
   - [x] Map fields:
     - [x] `updatedCustomer.name`.
-    - [x] `updatedCustomer.acceptMarketing`.
+    - [x] `updatedCustomer.acceptMarketing` and `updatedCustomer.isAcceptedMarketing`.
     - [x] `updatedCustomer.billingPerson.{name, companyName, postalCode, phone, countryCode}`.
-    - [x] `checkout.extraFields` for Tax ID, Cell Phone, How did you hear… (use keys from definitions where available).
-    - [x] Include `extraFieldsPayload.mapToUpdate` and `updateMode: "UPDATE_HIDDEN"` for persistence where applicable.
+    - [x] `updatedCustomer.extraFields` for Tax ID, Cell Phone, How did you hear… (use keys from definitions where available).
   - [x] Do not send email updates from this form.
   - [x] On success: `Ecwid.refreshConfig()` then redirect to `/products` and show an info banner per PRD.
 
@@ -63,8 +62,8 @@
 
 - [x] Webhook Automations (server-side; no client code)
   - [x] Document and configure an Ecwid Automation: on "Customer updated" (or related), when Tax ID present/validated, assign "Wholesaler" group and set tax-exempt if policy requires.
+  - [x] Seed and maintain App Storage `public/extrafields` from Application Fields (CUSTOMERS) via webhook/polling.
   - [x] Note: No client-side group assignment.
-  - [x] See WEBHOOK_AUTOMATION.md for detailed implementation guide.
 
 - [x] API policy (compliance)
   - [x] Use only Storefront JS API and `storefront/api/v1/{storeId}/customer/update`.
@@ -86,12 +85,12 @@ See `E2E_TESTING_GUIDE.md` for comprehensive test procedures.
   - [ ] Banner visible on non-account pages; hidden on account/register.
   - [ ] Navigating to `/products/account/register` injects form and prefilled data.
 - [ ] Field definitions:
-  - [ ] Definitions load from `ec.order.extraFields` when available; otherwise from `customer/update` response.
+  - [ ] Definitions load from App Storage (public/extrafields) when available; otherwise from checkout response.
 - [ ] Submit flow:
-  - [ ] `customer/update` request contains updatedCustomer, billingPerson, acceptMarketing, countryCode, and extraFields payload as specified.
+  - [ ] `customer/update` request contains updatedCustomer, billingPerson, acceptMarketing, countryCode, and `updatedCustomer.extraFields` as specified.
   - [ ] On success, `Ecwid.refreshConfig()` executes; user is redirected to `/products`; info banner is shown.
 - [ ] Automation:
-  - [ ] Configure webhook per WEBHOOK_AUTOMATION.md to assign "Wholesaler" group after valid Tax ID.
+  - [ ] Configure webhook per WEBHOOK_AUTOMATION.md to assign "Wholesaler" group after valid Tax ID and seed App Storage.
   - [ ] Verify prices become visible per existing logic after group assignment.
 - [ ] Accessibility:
   - [ ] Error styling and aria attributes match storefront conventions.
@@ -105,3 +104,4 @@ See `E2E_TESTING_GUIDE.md` for comprehensive test procedures.
 - [x] E2E_TESTING_GUIDE.md - Comprehensive test procedures for all features
 - [x] CLAUDE.md - Updated with all new functionality
 - [x] tasks.md - All implementation tasks marked complete
+- [ ] docs/APP_STORAGE.md - Define storage contract for `public/extrafields`

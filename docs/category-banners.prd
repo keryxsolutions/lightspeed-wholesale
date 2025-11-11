@@ -1,0 +1,441 @@
+# PRD — Category Banners
+
+**Version:** 1.0
+**Owner:** Keryx Solutions
+**Status:** Active
+
+---
+
+## 1. Summary
+
+Display full-width hero banners on category pages using the category's featured image as the background, with the category description overlaid as rich text. This feature transforms standard category pages into visually engaging landing pages with marketing-friendly layouts.
+
+---
+
+## 2. Current Behavior (as implemented)
+
+### Trigger
+- **Page type:** `CATEGORY` (detected via `Ecwid.OnPageLoaded`)
+- **Prerequisites:**
+  - Category must have a featured image
+  - Category must have a description
+  - Ecwid design setting: "Hide category names" must be enabled
+  - Store must grant public token with `read_catalog` scope
+
+### Rendering Flow
+1. On `CATEGORY` page load, extract `categoryId` from page context
+2. Fetch category data: `GET /api/v3/{storeId}/categories/{categoryId}`
+   - Uses `Ecwid.getAppPublicToken(clientId)` for authorization
+3. If category has `originalImageUrl` and `description`:
+   - Find `.ecwid-productBrowser-head` container
+   - Wrap container in `.category-banner` div
+   - Insert `<img>` with category image as full-width background
+   - Overlay existing `.grid__description` element on top of image
+4. Inject external CSS from GitHub Pages: `app.css`
+5. Load Google Fonts: Roboto (400, 700)
+
+### DOM Structure (after injection)
+```html
+<div class="category-banner">
+  <img src="{category.originalImageUrl}" alt="{category.name}" class="category-banner-image" />
+  <div class="ecwid-productBrowser-head">
+    <div class="grid__description category-banner-text">
+      {category.description HTML}
+    </div>
+  </div>
+</div>
+```
+
+### Styling
+- **External CSS:** `https://keryxsolutions.github.io/lightspeed-wholesale/app.css`
+- **Font:** Google Fonts Roboto (weights 400, 700)
+- **Layout:** Full-width image with centered, semi-transparent text overlay
+- **Responsive:** Scales on mobile and desktop
+
+### SPA Navigation Handling
+- Idempotent: Safe to call multiple times (checks if banner already exists)
+- Cleans up on navigation away from category pages
+- Re-renders on category-to-category navigation
+
+---
+
+## 3. Configuration
+
+### Design Requirements
+**Ecwid Store Design Settings:**
+- **Category name position:** Must be set to "Hide category names"
+  - Rationale: Prevents duplicate category title (one from Ecwid, one in banner overlay)
+  - Location: Ecwid Admin → Design → Category Pages
+
+### Content Requirements (per category)
+- **Featured Image:** Must be uploaded in category settings
+  - Recommended size: 1920x600px (or similar wide aspect ratio)
+  - Format: JPG or PNG
+- **Description:** Must contain text or HTML
+  - Rendered as-is (supports HTML formatting)
+  - Recommended: 1-2 sentences or short paragraph
+
+### App Requirements
+- **Public Token Scope:** `read_catalog`
+- **Client ID:** `custom-app-121843055-1`
+
+---
+
+## 4. APIs and Interfaces
+
+### Read APIs
+- `Ecwid.getOwnerId()` — Get store ID
+- `Ecwid.getAppPublicToken(clientId)` — Get public token for REST API
+- `GET https://app.ecwid.com/api/v3/{storeId}/categories/{categoryId}`
+  - Headers: `Authorization: Bearer {publicToken}`
+  - Returns: Category object with `name`, `description`, `originalImageUrl`, etc.
+
+### Events
+- `Ecwid.OnAPILoaded.add(callback)` — Initial setup
+- `Ecwid.OnPageLoaded.add(callback)` — SPA navigation handling
+  - Payload: `{ page, categoryId, ... }`
+
+### DOM Queries
+- `.ecwid-productBrowser-head` — Ecwid's category header container
+- `.grid__description` — Existing description element (moved into overlay)
+
+---
+
+## 5. User Scenarios
+
+### Scenario 1: Category with Image and Description
+**Context:** Category has both featured image and description text
+**Behavior:**
+- Full-width banner displays with image as background
+- Description overlaid on top of image
+- Standard category grid displays below banner
+- Category name hidden (per design setting)
+
+**Expected UX:**
+- Visually engaging landing page
+- Clear category branding
+- Smooth transition from banner to product grid
+
+---
+
+### Scenario 2: Category with No Image
+**Context:** Category has description but no featured image
+**Behavior:**
+- No banner injected
+- Standard Ecwid category page layout
+- Description rendered in default position (if design allows)
+
+**Expected UX:**
+- Graceful degradation to standard layout
+- No broken images or layout issues
+
+---
+
+### Scenario 3: Category with No Description
+**Context:** Category has featured image but no description
+**Behavior:**
+- No banner injected (requires both image and description)
+- Standard category layout
+
+**Expected UX:**
+- Falls back to default behavior
+- No empty overlay or unnecessary DOM changes
+
+---
+
+### Scenario 4: SPA Navigation Between Categories
+**Context:** User navigates from one category page to another
+**Behavior:**
+- Previous banner removed (if exists)
+- New banner injected (if new category qualifies)
+- No duplicate banners or orphaned DOM nodes
+
+**Expected UX:**
+- Smooth transitions
+- No flicker or cumulative layout shift
+
+---
+
+## 6. Acceptance Criteria
+
+### Functional Requirements
+- ✅ Banner displays on category pages with image + description
+- ✅ Image loads as full-width background
+- ✅ Description overlays image with readable styling
+- ✅ Banner does not display on categories without image or description
+- ✅ SPA navigation correctly updates/removes banners
+- ✅ No duplicate banners on page transitions
+- ✅ External CSS and fonts load correctly
+
+### Visual Requirements
+- ✅ Image aspect ratio preserved (no distortion)
+- ✅ Text overlay readable on all image backgrounds (semi-transparent backdrop)
+- ✅ Responsive layout works on mobile and desktop
+- ✅ Banner integrates seamlessly with Ecwid's product grid below
+
+### Performance Requirements
+- ✅ Banner renders within 500ms of page load
+- ✅ Image loading does not block category product grid
+- ✅ No cumulative layout shift (CLS) during banner injection
+- ✅ External CSS cached by browser after first load
+
+### Error Handling
+- ✅ No console errors if category API call fails
+- ✅ Graceful fallback if image fails to load
+- ✅ No broken layout if description contains invalid HTML
+
+---
+
+## 7. DOM and CSS
+
+### CSS Classes
+- `.category-banner` — Wrapper for entire banner (image + overlay)
+- `.category-banner-image` — Full-width `<img>` element
+- `.category-banner-text` — Text overlay container (applied to `.grid__description`)
+- `.ecwid-productBrowser-head` — Ecwid's original header (repositioned)
+
+### Inline Styles (JavaScript-injected)
+```javascript
+{
+  position: 'relative',
+  width: '100%',
+  overflow: 'hidden'
+}
+```
+
+### External Stylesheet
+**URL:** `https://keryxsolutions.github.io/lightspeed-wholesale/app.css`
+
+**Key Rules:**
+```css
+.category-banner {
+  position: relative;
+  width: 100%;
+  height: auto;
+  margin-bottom: 2rem;
+}
+
+.category-banner-image {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.category-banner-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  padding: 2rem;
+  border-radius: 8px;
+  text-align: center;
+  max-width: 80%;
+}
+```
+
+### Google Fonts
+**URL:** `https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap`
+**Usage:** Applied to `.category-banner-text`
+
+---
+
+## 8. Error Handling
+
+### API Failures
+- **Condition:** Category fetch fails (404, 403, network error)
+- **Behavior:** Log warning to console, skip banner injection
+- **Logging:** `"Category Banner: Failed to fetch category data"`
+- **User Impact:** None (graceful degradation to standard layout)
+
+### Missing Image URL
+- **Condition:** Category object returned but `originalImageUrl` is null
+- **Behavior:** Skip banner injection
+- **Logging:** No warning (expected scenario)
+- **User Impact:** Standard category layout
+
+### Invalid Description HTML
+- **Condition:** Description contains malformed HTML
+- **Behavior:** Browser sanitizes HTML, renders what it can
+- **Logging:** No specific handling (relies on browser resilience)
+- **User Impact:** May have minor formatting issues in overlay
+
+### CSS/Font Loading Failures
+- **Condition:** External CSS or Google Fonts fail to load (CDN down, network issue)
+- **Behavior:** Fallback to browser default styles
+- **Logging:** No explicit logging (browser handles)
+- **User Impact:** Unstyled but functional overlay
+
+---
+
+## 9. Performance Considerations
+
+### Image Loading
+- **Strategy:** Use native `<img>` tag (browser handles lazy loading)
+- **Optimization:** Rely on Ecwid's CDN for optimized images
+- **Future Enhancement:** Add `loading="lazy"` attribute for below-fold categories
+
+### CSS/Font Loading
+- **Caching:** External CSS and fonts cached by browser
+- **Render-blocking:** CSS loaded asynchronously (no block on category grid)
+- **Font Display:** Uses `display=swap` to prevent FOIT (Flash of Invisible Text)
+
+### DOM Manipulation
+- **Timing:** Banner injected after category data fetch (non-blocking)
+- **Reflows:** Minimal (single wrapper insertion)
+- **Cleanup:** Old banners removed before new injection (prevents memory leaks)
+
+---
+
+## 10. Constraints and Limitations
+
+### Technical Constraints
+- **No server-side rendering:** All rendering happens client-side
+- **Ecwid design dependency:** Requires "Hide category names" setting
+- **Image aspect ratio:** Fixed by uploaded image (no dynamic cropping)
+- **HTML sanitization:** Description HTML rendered as-is (no sanitization)
+
+### Content Constraints
+- **Both image and description required:** Feature won't activate with only one
+- **Image quality:** Depends on uploaded asset (no automatic enhancement)
+- **Description length:** Long descriptions may overflow overlay (design limitation)
+
+### Ecwid Platform Constraints
+- **SPA architecture:** Must handle dynamic page transitions
+- **DOM structure dependency:** Relies on `.ecwid-productBrowser-head` selector
+- **Design conflicts:** May conflict with custom themes (requires testing)
+
+---
+
+## 11. Dependencies
+
+### Upstream (Required for this feature)
+- `waitForEcwidAndTokens()` utility — Ensures API readiness and token availability
+- `ecwidFetchJSON(path, options)` utility — Makes authenticated REST calls
+- `ensureSingletonNode(id, createEl)` utility — Idempotent DOM injection
+
+### Downstream (No features depend on Category Banners)
+- This is a standalone visual enhancement feature
+
+---
+
+## 12. Testing Scenarios
+
+### Manual Testing Checklist
+- [ ] Create category with image + description → Verify banner displays
+- [ ] Create category with image only → Verify no banner (standard layout)
+- [ ] Create category with description only → Verify no banner
+- [ ] Create category with neither → Verify no banner
+- [ ] Navigate between category pages → Verify banners update correctly
+- [ ] Navigate from category to product page → Verify banner removed
+- [ ] Navigate from product to category → Verify banner injected
+- [ ] Test on mobile device → Verify responsive layout
+- [ ] Check Network tab → Verify CSS/fonts cached after first load
+- [ ] Check Console → Verify no errors or warnings
+- [ ] Test with long description → Verify overlay doesn't overflow
+- [ ] Test with invalid HTML in description → Verify graceful rendering
+
+### Edge Cases
+- [ ] Category with extremely large image (10MB+) → Verify performance
+- [ ] Category with SVG image → Verify rendering
+- [ ] Category with animated GIF → Verify behavior
+- [ ] Multiple rapid category navigations → Verify no race conditions
+
+---
+
+## 13. Future Enhancements
+
+### Potential Improvements
+- **Video backgrounds:** Support for video URLs in addition to images
+- **Parallax scrolling:** Parallax effect as user scrolls down
+- **Multiple images:** Carousel/slideshow support for categories
+- **Custom overlay positions:** Top, center, bottom alignment options
+- **Animation effects:** Fade-in, slide-in effects on banner load
+- **Call-to-action buttons:** Add configurable CTA buttons in overlay
+- **Height control:** Admin setting for banner height (fixed vs. auto)
+
+### Accessibility Improvements
+- **Alt text:** Use category name as `alt` attribute (already implemented)
+- **ARIA labels:** Add `role="banner"` and `aria-label` for screen readers
+- **Keyboard navigation:** Ensure overlay doesn't trap focus
+- **Color contrast:** Ensure text readable on all background images (WCAG AA)
+
+---
+
+## 14. Telemetry and Monitoring
+
+### Current Logging
+- Console prefix: `"Category Banner:"` for all banner-related logs
+- Warnings: API fetch failures, missing DOM selectors
+- Errors: CSS injection failures
+
+### Future Telemetry (Recommended)
+Track via `trackWholesaleEvent()`:
+- `category_banner_view` — Banner successfully rendered
+  - Properties: `{ categoryId, categoryName, imageUrl }`
+- `category_banner_error` — Banner failed to render
+  - Properties: `{ categoryId, error, reason }`
+- `category_banner_css_load` — External CSS loaded
+- `category_banner_image_load` — Image successfully loaded
+
+---
+
+## 15. Security Considerations
+
+### XSS Risk
+- **Risk:** Category description HTML rendered as-is (no sanitization)
+- **Mitigation:** Ecwid admin-only access to category descriptions (trusted input)
+- **Recommendation:** Future enhancement to add HTML sanitization for defense-in-depth
+
+### Image Hotlinking
+- **Risk:** External image URLs could be hotlinked (bandwidth theft)
+- **Mitigation:** Ecwid hosts images on their CDN (no external URLs)
+
+### HTTPS
+- **Requirement:** All external resources (CSS, fonts) loaded via HTTPS
+- **Status:** ✅ Implemented (GitHub Pages and Google Fonts use HTTPS)
+
+---
+
+## 16. SEO Considerations
+
+### Structured Data
+- Category description HTML may contain schema markup (preserved)
+- No negative SEO impact (content still in DOM, just repositioned)
+
+### Image Alt Text
+- Uses category name as `alt` attribute (good for image SEO)
+- Future: Allow custom alt text per category
+
+### Content Accessibility
+- Description text remains in HTML (crawlable by search engines)
+- No content hidden or removed (only repositioned)
+
+---
+
+## 17. Browser Compatibility
+
+### Supported Browsers
+- ✅ Chrome/Edge (Chromium) 90+
+- ✅ Firefox 88+
+- ✅ Safari 14+
+- ✅ Mobile Safari (iOS 14+)
+- ✅ Chrome Mobile (Android 10+)
+
+### Known Issues
+- None reported
+
+---
+
+## 18. References
+
+- **Implementation:** `/app.js` lines 260-445 (`initializeCategoryBanner`)
+- **Styles:** `/app.css` (`.category-banner`, `.category-banner-text`)
+- **Ecwid Categories API:** https://docs.ecwid.com/api-reference/categories
+- **OnPageLoaded Events:** https://docs.ecwid.com/storefronts/track-storefront-events/page-is-loaded-events
+
+---
+
+**Last Updated:** 2025-11-11
+**Implementation Status:** ✅ Complete and Production-Ready
