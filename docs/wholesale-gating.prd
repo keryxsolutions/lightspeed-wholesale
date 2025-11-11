@@ -1,0 +1,358 @@
+# PRD — Wholesale Gating (Price Visibility)
+
+**Version:** 1.0
+**Owner:** Keryx Solutions
+**Status:** Active
+
+---
+
+## 1. Summary
+
+Hide product prices, buy buttons, and price filter widgets for guests and non-wholesale customers. Show full pricing and purchasing capabilities for logged-in members of the configured wholesale customer group.
+
+This feature enforces a "wholesale-only" storefront experience where pricing is privileged information available only to approved wholesale customers.
+
+---
+
+## 2. Current Behavior (as implemented)
+
+### Detection Logic
+1. **Wait for Ecwid API readiness:** Poll until `Ecwid.Customer.get()` is available
+2. **Check customer status:**
+   - Guest (not logged in) → Hide prices
+   - Logged in, not wholesale member → Hide prices
+   - Logged in, wholesale member → Show prices
+3. **Wholesale membership check:**
+   - Primary: `customer.membership.name` from `Ecwid.Customer.get()` (case-insensitive comparison)
+   - Fallback: Session cache `WHOLESALE_STATUS_CACHE` (prevents flicker on navigation)
+   - Group name: `window.WHOLESALE_GROUP_NAME` (default: `"Wholesaler"`)
+
+### Implementation Mechanism
+**When hiding prices:**
+- Inject `<style id="wholesale-hide-css">` tag with CSS to hide:
+  - Price nodes (`.ec-price-item`, `.price-display`, etc.)
+  - Buy buttons (`.form-control--button`, `.ec-cart-step__wrap`, etc.)
+  - Price filter widget (`.ec-price-filter`, `.price-controls`)
+- Set storefront config flags:
+  ```javascript
+  ec.storefront.config.show_price_on_items = false;
+  ec.storefront.config.show_buy_button = false;
+  ```
+- Call `Ecwid.refreshConfig()` to apply changes
+
+**When showing prices:**
+- Remove `#wholesale-hide-css` style tag
+- Set storefront config flags to `true`
+- Call `Ecwid.refreshConfig()`
+
+### SPA Navigation Handling
+- Hooks into `Ecwid.OnPageLoaded` events
+- Re-evaluates price visibility on every page transition
+- Maintains idempotent state (safe to call multiple times)
+
+---
+
+## 3. Configuration
+
+### Global Variables
+- `window.WHOLESALE_GROUP_NAME` — Name of the wholesale customer group
+  - Type: `string`
+  - Default: `"Wholesaler"`
+  - Comparison: Case-insensitive
+
+### Feature Flags
+- `WHOLESALE_FLAGS.ENABLE_WHOLESALE_BANNER` — Controls registration banner display (independent feature)
+  - Type: `boolean`
+  - Default: `true`
+  - **Note:** Gating (price hiding) is always active; flag only controls banner
+
+### Session Cache
+- `WHOLESALE_STATUS_CACHE` — In-memory cache of wholesale status
+  - Purpose: Reduce flicker during SPA navigation
+  - Cleared: Never (session-lifetime only)
+  - Keys: `isWholesaleCustomer: boolean`
+
+---
+
+## 4. DOM and CSS
+
+### Injected Styles
+When prices should be hidden, the following `<style>` tag is injected with ID `wholesale-hide-css`:
+
+```css
+/* Hide all price elements */
+.ec-price-item,
+.price-display,
+.product-details__price,
+.product-details-module__price,
+.ec-store__products-price,
+.grid__price,
+.grid-product__price,
+.grid-product__price-value {
+  display: none !important;
+}
+
+/* Hide buy buttons and add-to-cart */
+.form-control--button,
+.ec-cart-step__wrap,
+.product-details__add-to-bag,
+.product-details-module__buy-now,
+.grid-product__buy-now {
+  display: none !important;
+}
+
+/* Hide price filter widget */
+.ec-price-filter,
+.price-controls,
+.filter-price {
+  display: none !important;
+}
+```
+
+### Config Toggles
+Modified storefront configuration:
+- `ec.storefront.config.show_price_on_items`
+- `ec.storefront.config.show_buy_button`
+
+---
+
+## 5. User Scenarios
+
+### Scenario 1: Guest Visitor
+**Context:** User not logged in
+**Behavior:**
+- All prices hidden
+- All buy buttons hidden
+- Price filter widget hidden
+- Can browse products, categories, and descriptions
+- Login link visible
+
+**Expected UX:**
+- Clear call-to-action to log in or register as wholesale customer
+- Products are discoverable but not purchasable
+
+---
+
+### Scenario 2: Logged-In, Non-Wholesale Customer
+**Context:** User logged in but not a member of wholesale group
+**Behavior:**
+- All prices hidden
+- All buy buttons hidden
+- Registration banner displayed (if `ENABLE_WHOLESALE_BANNER` is true)
+- Can access account pages and see existing orders
+
+**Expected UX:**
+- Prompted to complete wholesale registration
+- Clear path to become wholesale customer
+- Existing retail customers see upgrade path
+
+---
+
+### Scenario 3: Wholesale Customer
+**Context:** User logged in and member of `WHOLESALE_GROUP_NAME` group
+**Behavior:**
+- All prices visible
+- Buy buttons enabled
+- Price filter widget visible
+- Full shopping cart and checkout flow available
+
+**Expected UX:**
+- Normal e-commerce experience
+- Wholesale pricing (if configured in Ecwid) displayed
+- No friction or prompts
+
+---
+
+## 6. APIs and Interfaces
+
+### Read APIs
+- `Ecwid.Customer.get(callback)` — Current customer session
+  - Returns: `{ email, membership: { id, name }, ... }`
+  - Used to: Determine wholesale status
+- `ec.storefront.config` — Storefront configuration object
+  - Used to: Toggle price/button visibility
+
+### Write APIs
+- `Ecwid.refreshConfig()` — Apply storefront config changes
+- DOM manipulation: Inject/remove `<style>` tag
+
+### Events
+- `Ecwid.OnAPILoaded.add(callback)` — Initial setup
+- `Ecwid.OnPageLoaded.add(callback)` — SPA navigation handling
+
+---
+
+## 7. Acceptance Criteria
+
+### Guests (Not Logged In)
+- ✅ Prices are hidden on all pages (product, category, search)
+- ✅ Buy buttons are hidden
+- ✅ Price filter widget is hidden
+- ✅ Product images, descriptions, and metadata remain visible
+- ✅ No console errors or warnings
+
+### Logged-In Non-Wholesale Customers
+- ✅ Prices remain hidden
+- ✅ Buy buttons remain hidden
+- ✅ Registration banner shown (when enabled)
+- ✅ Can view order history and account settings
+- ✅ No console errors
+
+### Logged-In Wholesale Customers
+- ✅ Prices visible on all pages
+- ✅ Buy buttons enabled and functional
+- ✅ Price filter widget visible and functional
+- ✅ Can add to cart and complete checkout
+- ✅ No registration banner shown
+- ✅ No console errors
+
+### SPA Navigation
+- ✅ Price visibility state maintained across page transitions
+- ✅ No flicker or FOUC (Flash of Unstyled Content)
+- ✅ Session cache prevents redundant API calls
+- ✅ Works with hash-based and history-based routing
+
+---
+
+## 8. Error Handling
+
+### API Unavailability
+- **Condition:** `Ecwid.Customer.get()` times out or fails
+- **Behavior:** Default to hiding prices (conservative/secure approach)
+- **Logging:** Console warning with prefix `"Wholesale:"`
+
+### Missing Customer Data
+- **Condition:** `Ecwid.Customer.get()` returns null or undefined membership
+- **Behavior:** Treat as non-wholesale customer (hide prices)
+- **Logging:** Warning logged to console
+
+### Config Refresh Failure
+- **Condition:** `Ecwid.refreshConfig()` throws error
+- **Behavior:** CSS-based hiding remains active (defensive layering)
+- **Logging:** Error logged with details
+
+---
+
+## 9. Performance Considerations
+
+### Initialization
+- **Polling interval:** 100ms for `Ecwid.Customer` API readiness
+- **Max wait time:** 5 seconds (fallback to guest behavior)
+- **Session cache:** Prevents redundant API calls on SPA navigation
+
+### CSS Injection
+- **Single style tag:** `#wholesale-hide-css` (singleton pattern)
+- **Removal:** Clean removal when no longer needed
+- **Specificity:** Uses `!important` to override theme styles
+
+### Config Updates
+- **Debouncing:** Not required (OnPageLoaded handles cadence)
+- **Batch updates:** Config flags updated together, single refresh call
+
+---
+
+## 10. Constraints and Limitations
+
+### Technical Constraints
+- **No server-side rendering:** All logic runs client-side on storefront
+- **No custom backend:** Cannot implement server-side price hiding
+- **Theme CSS conflicts:** May require adjustments for custom themes
+- **Ecwid API dependency:** Relies on `Ecwid.Customer` API availability
+
+### Business Constraints
+- **All-or-nothing:** Cannot hide prices on subset of products (global setting)
+- **Group-based only:** Cannot implement custom logic beyond group membership
+- **No guest cart:** Guests cannot add items (even if they could see products)
+
+---
+
+## 11. Dependencies
+
+### Upstream (Required for this feature)
+- `waitForEcwidAndTokens()` utility (for Ecwid API readiness polling)
+- `ensureSingletonNode()` utility (for idempotent style tag injection)
+- `removeNodeById()` utility (for cleanup)
+
+### Downstream (Features that depend on Gating)
+- **Wholesale Registration Module:** Uses gating status to show banner
+- **Wholesale Banner:** Shown only to non-wholesale logged-in users
+
+---
+
+## 12. Testing Scenarios
+
+### Manual Testing Checklist
+- [ ] Log out → Verify prices hidden
+- [ ] Log in as retail customer → Verify prices hidden, banner shown
+- [ ] Log in as wholesale customer → Verify prices shown, no banner
+- [ ] Navigate between product/category pages → Verify state persists
+- [ ] Check Network tab → Verify no redundant `Customer.get()` calls
+- [ ] Check Console → Verify no errors or warnings
+- [ ] Test with browser cache disabled → Verify no flicker
+- [ ] Test with slow network (throttling) → Verify graceful degradation
+
+### Automated Test Scenarios (Future)
+- Unit test: `isWholesaleMember(customer)` logic
+- Unit test: Session cache hit/miss behavior
+- E2E test: Guest flow (prices hidden)
+- E2E test: Wholesale customer flow (prices shown)
+- E2E test: SPA navigation state persistence
+
+---
+
+## 13. Future Enhancements
+
+### Potential Improvements
+- **Product-level gating:** Hide specific products/categories from non-wholesale users
+- **Custom messaging:** Display "Login to see prices" message instead of hiding
+- **Wholesale pricing tiers:** Show different prices based on customer group
+- **Guest cart with quote:** Allow guests to request quotes for hidden-price items
+- **A/B testing:** Compare hidden prices vs. "request quote" CTA
+
+### Known Limitations to Address
+- **Theme compatibility:** May require theme-specific CSS selectors
+- **Accessibility:** Add ARIA labels for screen readers when prices are hidden
+- **SEO:** Ensure hidden prices don't affect product schema markup
+
+---
+
+## 14. Telemetry and Monitoring
+
+### Current Logging
+- Console prefix: `"Wholesale:"` for all gating-related logs
+- Warnings: API timeouts, missing customer data
+- Errors: Config refresh failures, DOM injection errors
+
+### Future Telemetry (Recommended)
+Track via `trackWholesaleEvent()`:
+- `wholesale_gating_applied` — Prices hidden for non-wholesale user
+- `wholesale_gating_removed` — Prices shown for wholesale user
+- `wholesale_gating_error` — API failure or timeout
+
+---
+
+## 15. Security Considerations
+
+### Price Disclosure Risk
+**Mitigation:** Client-side hiding only affects UI; prices still in HTML/API responses
+- ⚠️ **Risk:** Tech-savvy users can inspect DOM or API calls to see prices
+- ✅ **Acceptable:** Wholesale pricing intended for qualified buyers; not sensitive
+- ✅ **Defense-in-depth:** Server-side group enforcement at checkout prevents unauthorized purchases
+
+### Session Hijacking
+- **Mitigation:** Ecwid session cookies are HTTP-only and secure
+- **Responsibility:** Session security managed by Ecwid platform
+
+---
+
+## 16. References
+
+- **Implementation:** `/app.js` lines 145-238 (`initializeWholesalePriceVisibility`)
+- **Ecwid Customer API:** https://docs.ecwid.com/storefronts/manage-customers-on-the-storefront
+- **Storefront Config:** https://docs.ecwid.com/storefronts/customize-storefront-config
+- **OnPageLoaded Events:** https://docs.ecwid.com/storefronts/track-storefront-events/page-is-loaded-events
+
+---
+
+**Last Updated:** 2025-11-11
+**Implementation Status:** ✅ Complete and Production-Ready

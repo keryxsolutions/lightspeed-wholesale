@@ -917,3 +917,92 @@ function u(t) {
   </div>
 </div>
 ```
+
+## makeRequest
+
+```js
+function I() {
+    return window._xnext_initialization_scripts
+}
+function Qe() {
+    return I().some(t => t.widgetType === a.PRODUCT || t.widgetType === a.SINGLE_PRODUCT)
+}
+function pf() {
+    const e = Qe()
+      , t = Gt()
+      , {sessionToken: o} = eo()
+      , n = we()
+      , r = Ae();
+    return xo({
+        mutationKey: [ts],
+        mutationFn: async a => {
+            n.info(Y.MUTATION, "UpdateCustomerInfoMutation start mutation", a);
+            const s = await df(a, r.value, e)
+              , i = bt(o);
+            return t.setQueryData(i, s),
+            n.info(Y.MUTATION, "UpdateCustomerInfoMutation finish mutation", a),
+            s
+        }
+        ,
+        onMutate: async a => {
+            n.info(Y.MUTATION, "UpdateCustomerInfoMutation onMutate", a);
+            const s = bt(o);
+            await t.cancelQueries({
+                queryKey: s
+            });
+            const i = t.getQueryData(s);
+            return os(t, s, d => ({
+                ...d,
+                ...a
+            })),
+            {
+                previousCustomer: i
+            }
+        }
+        ,
+        onError: (a, s, i) => {
+            n.error(Y.MUTATION, "UpdateCustomerInfoMutation onError", a);
+            const d = bt(o);
+            t.setQueryData(d, i?.previousCustomer)
+        }
+    })
+}
+async function df(e, t, o) {
+    const n = {
+        updatedCustomer: e,
+        lang: t
+    };
+    return o.makeRequest("/customer/update", n).then(r => ({
+        type: "authorized",
+        customer: r.data
+    }))
+}
+```
+
+```js
+Ecwid.ecommerceInstance.widgets.options.storefrontApiClient.makeRequest
+```
+
+## App Storage for Customer Extra Fields
+
+Public app storage can expose Customer Extra Fields metadata to the storefront. The app/webhook seeds `scope=public`, `key=extrafields` with the JSON returned by Application Fields (CUSTOMERS).
+
+```javascript
+const raw = Ecwid.getAppStorageData("public"); // or Ecwid.getAppStorageData("public", "extrafields")
+const extrafields = raw ? JSON.parse(raw) : null;
+console.log(extrafields);
+```
+
+Expected shape:
+
+```json
+{
+  "items": [
+    { "key": "HWVrQNC", "title": "Tax ID", "entityTypes": ["CUSTOMERS"], "type": "TEXT", "textPlaceholder": "Enter your tax identification number", "required": true },
+    { "key": "HSdoOLH", "title": "How did you hear about us?", "entityTypes": ["CUSTOMERS"], "type": "SELECT", "options": [ { "title": "Google" }, { "title": "Referral" } ] },
+    { "key": "38BPWmS", "title": "Cell Phone", "entityTypes": ["CUSTOMERS"], "type": "TEXT" }
+  ]
+}
+```
+
+Storefront maps by title (case-insensitive) and prefers keys when present.

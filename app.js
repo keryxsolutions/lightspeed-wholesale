@@ -22,16 +22,7 @@ function toAccountRegisterPath() {
   return "/products/account/register";
 }
 
-// DOM helpers (idempotent)
-function ensureSingletonNode(id, createEl) {
-  let el = document.getElementById(id);
-  if (!el) {
-    el = createEl();
-    el.id = id;
-    document.head.appendChild(el);
-  }
-  return el;
-}
+// DOM helper
 function removeNodeById(id) {
   const el = document.getElementById(id);
   if (el) el.remove();
@@ -110,29 +101,6 @@ function getWholesaleGroupName() {
     "Wholesaler"
   );
 }
-const WHOLESALE_CACHE = {};
-
-async function ecwidFetchJSON(path, options) {
-  const { storeId, publicToken } = await waitForEcwidAndTokens();
-  const url = `https://app.ecwid.com/api/v3/${storeId}${path}`;
-  const init = options || {};
-  const headers = Object.assign(
-    {
-      Authorization: `Bearer ${publicToken}`,
-      "Content-Type": "application/json",
-    },
-    init.headers || {}
-  );
-  const res = await fetch(url, Object.assign({}, init, { headers }));
-  if (!res.ok) {
-    const err = new Error(`Ecwid API error ${res.status} for ${path}`);
-    try {
-      err.status = res.status;
-    } catch (_) {}
-    throw err;
-  }
-  return res.json();
-}
 
 /* removed legacy server proxy helpers */
 
@@ -180,9 +148,7 @@ function initializeWholesalePriceVisibility() {
 
   // Helper: set price/button visibility using ec.storefront.config
   function setWholesaleConfig(show) {
-    if (isEcwidV3StorefrontLoaded) {
-      window.ec = window.ec || {};
-      window.ec.storefront = window.ec.storefront || {};
+    if (window.ec && window.ec.storefront) {
       const config = window.ec.storefront;
       config.product_list_price_behavior = show ? "SHOW" : "HIDE";
       config.product_list_buybutton_behavior = show ? "SHOW" : "HIDE";
@@ -214,11 +180,20 @@ function initializeWholesalePriceVisibility() {
     tryGet();
   }
 
-  // Main logic: check login and set visibility
+  // Main logic: check login and wholesale membership for visibility
   function updateWholesaleVisibility() {
     Ecwid.Customer.get(function (customer) {
       const isLoggedIn = customer && customer.email;
+      let showPrices = false;
+
       if (isLoggedIn) {
+        // Check if customer is in Wholesaler group
+        const wholesaleName = getWholesaleGroupName().toLowerCase();
+        const memberName = (customer.membership?.name || "").toLowerCase();
+        showPrices = memberName === wholesaleName;
+      }
+
+      if (showPrices) {
         setWholesaleConfig(true);
         removeWholesaleHidingCSS();
       } else {
@@ -670,6 +645,17 @@ try {
 function initializeWholesaleRegistration() {
   if (!WHOLESALE_FLAGS.ENABLE_WHOLESALE_REGISTRATION) return;
 
+  // Check for success banner flag from redirect
+  try {
+    if (sessionStorage.getItem("wr-success") === "1") {
+      sessionStorage.removeItem("wr-success");
+      // Show banner after a short delay to ensure page is loaded
+      setTimeout(() => showRegistrationSuccessBanner(), 500);
+    }
+  } catch (e) {
+    // Ignore sessionStorage errors
+  }
+
   // Initial run
   try {
     const last =
@@ -689,9 +675,6 @@ function initializeWholesaleRegistration() {
     handleWholesaleRegistrationOnPage(page || { type: "UNKNOWN" });
   });
 }
-
-// Session cache to reduce repeated status calls
-const WHOLESALE_STATUS_CACHE = { customerId: null, isWholesaleApproved: null };
 
 function fetchLoggedInCustomer() {
   return new Promise((resolve) => {
@@ -762,10 +745,8 @@ async function renderWholesaleBanner({ customer, onReg }) {
     if (membershipApproved === true) shouldShow = false;
     else if (membershipApproved === false) shouldShow = true;
     else {
-      shouldShow =
-        WHOLESALE_STATUS_CACHE.customerId === customer.id
-          ? !WHOLESALE_STATUS_CACHE.isWholesaleApproved
-          : true;
+      // Membership status unknown - default to showing banner
+      shouldShow = true;
     }
   } else {
     shouldShow = false;
@@ -854,12 +835,25 @@ function restoreAccountBody(container) {
   delete container.dataset.wrHijacked;
 }
 let ACCOUNT_REGISTER_OBSERVER = null;
+let RENDERING_ACC_FORM = false;
+
 function startAccountRegisterObserver(onChange) {
   if (ACCOUNT_REGISTER_OBSERVER) return;
   const container = queryAccountBody();
   if (!container) return;
-  ACCOUNT_REGISTER_OBSERVER = new MutationObserver(() => onChange());
-  ACCOUNT_REGISTER_OBSERVER.observe(container, { childList: true });
+
+  // Debounce callback to prevent rapid re-renders from self-triggered mutations
+  let timeoutId = null;
+  const debouncedOnChange = () => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(onChange, 80);
+  };
+
+  ACCOUNT_REGISTER_OBSERVER = new MutationObserver(debouncedOnChange);
+  ACCOUNT_REGISTER_OBSERVER.observe(container, {
+    childList: true,
+    subtree: false,
+  });
 }
 function stopAccountRegisterObserver() {
   if (ACCOUNT_REGISTER_OBSERVER) {
@@ -869,42 +863,171 @@ function stopAccountRegisterObserver() {
 }
 
 let EXTRA_FIELD_DEFS_CACHE = null;
+
 function getCheckoutExtraFieldDefsFromEc() {
   try {
-    const defs = window.ec?.order?.extraFields || window.ec?.checkout?.extraFields || null;
+    const defs =
+      window.ec?.order?.extraFields || window.ec?.checkout?.extraFields || null;
     return defs && typeof defs === "object" ? defs : null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
-async function postStorefrontCustomerUpdate(body) {
+/**
+ * Access App Storage JSON safely. Supports both Ecwid.getAppStorageData(scope, key) and Ecwid.getAppStorageData(scope).
+ */
+function getAppStorageJSON(key) {
+  try {
+    if (typeof Ecwid?.getAppPublicConfig === "function") {
+      const raw = Ecwid.getAppPublicConfig(clientId);
+      if (!raw) {
+        console.info("Wholesale Reg: App Storage empty");
+        return null;
+      }
+      const parsed = JSON.parse(raw);
+      if (!parsed?.[key]) {
+        console.info("Wholesale Reg: App Storage empty for key: ", key);
+        return null;
+      }
+      return parsed?.[key];
+    }
+  } catch (e) {
+    console.warn("Wholesale Reg: App Storage parse error", e);
+  }
+  return null;
+}
+/**
+ * Load Customer Extra Field definitions from App Storage public/extrafields.
+ * Returns { tax, hear, cell } or nulls if not found.
+ */
+function loadCustomerExtraFieldDefsFromStorage() {
+  try {
+    const data = getAppStorageJSON("extraFields");
+    if (!data) return null;
+    const items = Array.isArray(data) ? data : [];
+    const customers = items.filter(
+      (it) =>
+        Array.isArray(it.entityTypes) && it.entityTypes.includes("CUSTOMERS")
+    );
+    const byTitle = {};
+    for (const it of customers) {
+      const title = String(it.title || "").trim();
+      if (!title) continue;
+      const low = title.toLowerCase();
+      byTitle[low] = {
+        key: it.key || null,
+        title,
+        placeholder: it.textPlaceholder || "",
+        type: String(it.type || "TEXT").toLowerCase(), // normalize
+        required: !!it.required,
+        options: Array.isArray(it.options)
+          ? it.options.map((o) => ({ title: o.title }))
+          : null,
+        // no sections available in storage; leave undefined
+      };
+    }
+    const tax = byTitle["tax id"] || null;
+    const hear = byTitle["how did you hear about us?"] || null;
+    const cell =
+      byTitle["cell phone"] ||
+      byTitle["cellphone"] ||
+      byTitle["cell phone (optional)"] ||
+      null;
+    return { tax, hear, cell };
+  } catch {
+    return null;
+  }
+}
+/**
+ * Load Customer Extra Field defs with preference for App Storage; fallback to checkout-based discovery.
+ */
+async function loadCustomerExtraDefsSafe() {
+  if (EXTRA_FIELD_DEFS_CACHE) return EXTRA_FIELD_DEFS_CACHE;
+
+  // 1) Try App Storage (public/extrafields)
+  const fromStorage = loadCustomerExtraFieldDefsFromStorage();
+  if (
+    fromStorage &&
+    (fromStorage.tax || fromStorage.hear || fromStorage.cell)
+  ) {
+    EXTRA_FIELD_DEFS_CACHE = fromStorage;
+    return EXTRA_FIELD_DEFS_CACHE;
+  }
+
+  // 2) Fallback to existing checkout-based discovery
+  const fromCheckout = await loadCheckoutExtraFieldDefsSafe();
+  EXTRA_FIELD_DEFS_CACHE = fromCheckout;
+  return EXTRA_FIELD_DEFS_CACHE;
+}
+// ... existing code ...
+
+/**
+ * Due to CORS restrictions we need to use
+ * Ecwid.ecommerceInstance.widgets.options.storefrontApiClient.makeRequest function
+ * @param {*} body
+ */
+async function fetchStorefrontCheckout(body) {
   const { storeId } = await waitForEcwidAndTokens();
-  const url = `https://app.ecwid.com/storefront/api/v1/${storeId}/customer/update`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify(body || { lang: "en" })
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.error || data?.message || `customer/update ${res.status}`);
-  return data;
+  const client = Ecwid.ecommerceInstance.widgets.options.storefrontApiClient;
+  const res = await client.makeRequest("/checkout", body);
+  return res.data;
+}
+/**
+ * Due to CORS restrictions we need to use
+ * Ecwid.ecommerceInstance.widgets.options.storefrontApiClient.makeRequest function
+ * @param {*} body
+ * @returns {Promise<Object>} Raw API response data (supports both "authorized/customer" and "checkout" responses)
+ */
+async function fetchStorefrontCustomerUpdate(body) {
+  const client = Ecwid.ecommerceInstance.widgets.options.storefrontApiClient;
+  const res = await client.makeRequest("/customer/update", body);
+  return res.data; // raw passthrough: supports both "authorized/customer" and "checkout" responses
 }
 function normalizeExtraDefs(map) {
-  const norm = (o) => !o ? null : ({
-    key: o.key || null,
-    title: o.title || "",
-    placeholder: o.textPlaceholder || "",
-    type: o.type || "text",
-    required: !!o.required,
-    options: Array.isArray(o.options) ? o.options.map(x => x.title) : null
-  });
+  const norm = (o) =>
+    !o
+      ? null
+      : {
+          key: o.key || null,
+          title: o.title || "",
+          placeholder: o.textPlaceholder || "",
+          type: (o.type || "text").toLowerCase(),
+          required: !!o.required,
+          options: Array.isArray(o.options)
+            ? o.options.map((x) => ({
+                title: x.title,
+                surcharge: x.surcharge ?? 0,
+              }))
+            : null,
+          // passthrough metadata needed for checkout payload
+          checkoutDisplaySection: o.checkoutDisplaySection,
+          orderDetailsDisplaySection: o.orderDetailsDisplaySection,
+          available: typeof o.available === "boolean" ? o.available : undefined,
+          saveToCustomerProfile:
+            typeof o.saveToCustomerProfile === "boolean"
+              ? o.saveToCustomerProfile
+              : undefined,
+          showInInvoice:
+            typeof o.showInInvoice === "boolean" ? o.showInInvoice : undefined,
+          showInNotifications:
+            typeof o.showInNotifications === "boolean"
+              ? o.showInNotifications
+              : undefined,
+          cpField: typeof o.cpField === "boolean" ? o.cpField : undefined,
+          orderBy: typeof o.orderBy === "number" ? o.orderBy : undefined,
+        };
   const byTitle = (t) => {
     const low = t.toLowerCase();
-    for (const k in map) if ((map[k]?.title || "").toLowerCase() === low) return map[k];
+    for (const k in map) {
+      const v = map[k];
+      const title = (v?.title || "").toLowerCase();
+      if (title === low) return norm({ ...v, key: k });
+    }
     return null;
   };
-  const tax = norm(map["3w9kla3"] || byTitle("Tax ID"));
-  const hear = norm(map["bp4q9w3"] || byTitle("How did you hear about us?"));
-  const cell = norm(byTitle("Cell Phone"));
+  const tax = byTitle("Tax ID");
+  const hear = byTitle("How did you hear about us?");
+  const cell = byTitle("Cell Phone");
   return { tax, hear, cell };
 }
 async function loadCheckoutExtraFieldDefsSafe() {
@@ -915,195 +1038,691 @@ async function loadCheckoutExtraFieldDefsSafe() {
     return EXTRA_FIELD_DEFS_CACHE;
   }
   try {
-    const resp = await postStorefrontCustomerUpdate({ lang: "en" });
+    const resp = await fetchStorefrontCheckout({ lang: "en" });
     const defs = resp?.checkoutSettings?.extraFields || {};
     EXTRA_FIELD_DEFS_CACHE = normalizeExtraDefs(defs);
   } catch {
     EXTRA_FIELD_DEFS_CACHE = {
-      tax: { key: null, title: "Tax ID", placeholder: "Enter your tax identification number", type: "text", required: true },
-      hear: { key: null, title: "How did you hear about us?", placeholder: "", type: "select", options: ["Google","Wholesale Central","Referral","Retailing Insight","Other"] },
-      cell: { key: null, title: "Cell Phone", placeholder: "", type: "text", required: false }
+      tax: {
+        key: null,
+        title: "Tax ID",
+        placeholder: "Enter your tax identification number",
+        type: "text",
+        required: true,
+      },
+      hear: {
+        key: null,
+        title: "How did you hear about us?",
+        placeholder: "",
+        type: "select",
+        options: [
+          { value: "Google", label: "Google" },
+          { value: "Wholesale Central", label: "Wholesale Central" },
+          { value: "Referral", label: "Referral" },
+          { value: "Retailing Insight", label: "Retailing Insight" },
+          { value: "Other", label: "Other" },
+        ],
+      },
+      cell: {
+        key: null,
+        title: "Cell Phone",
+        placeholder: "",
+        type: "text",
+        required: false,
+      },
     };
   }
   return EXTRA_FIELD_DEFS_CACHE;
 }
 
-function formRow(inner) { return `<div class="ec-form__row"><div class="ec-form__cell">${inner}</div></div>`; }
-function textInput({ id, label, value="", placeholder="", required=false, type="text", autocomplete="" }) {
-  const req = required ? '<div class="marker-required marker-required--medium"></div>' : '';
-  return `
-    <label for="${id}"><div class="ec-form__title ec-header-h6">${req}${label}</div></label>
-    <div class="form-control form-control--flexible">
-      <input id="${id}" class="form-control__text" type="${type}" maxlength="255" value="${value}"
-        ${autocomplete ? `autocomplete="${autocomplete}"` : ""} ${required ? "required" : ""}/>
-      <div class="form-control__placeholder"><div class="form-control__placeholder-inner">${placeholder || ""}</div></div>
-    </div>`;
+function formRow(inner) {
+  return `<div class="ec-form__row">${inner}</div>`;
 }
-function selectInput({ id, label, value="", options=[], required=false }) {
-  const req = required ? '<div class="marker-required marker-required--medium"></div>' : '';
-  const opts = options.map(o => `<option ${o===value?"selected":""}>${o}</option>`).join("");
-  return `
-    <label for="${id}"><div class="ec-form__title ec-header-h6">${req}${label}</div></label>
-    <div class="form-control form-control--flexible"><select id="${id}" class="form-control__text">${opts}</select></div>`;
+function formCell({
+  // Key in data object with hyphens instead of camelCase, e.g. "companyName" becomes "company-name"
+  key,
+  // Optional column width (numeric); if no value is set, the cell will span the full width, which is 12
+  width,
+  // Inner HTML
+  inner,
+}) {
+  return `<div class="ec-form__cell ${
+    width ? `ec-form__cell--${width}` : ""
+  } ec-form__cell--${key}">${inner}</div>`;
 }
-function checkboxInput({ id, label, checked=false }) {
-  return `
-    <div class="form-control form-control--checkbox">
-      <input id="${id}" type="checkbox" ${checked ? "checked" : ""} />
-      <label for="${id}"><span class="form-control__checkbox-label">${label}</span></label>
-    </div>`;
+function formMessage({
+  // Element name, e.g. "organization-name"
+  id,
+  // Inner HTML
+  inner,
+}) {
+  return `<div id="ec-${id}-input-msg" class="form__msg">${inner}</div>`;
+}
+function formControl({
+  // Element name, e.g. "organization-name"
+  id,
+  // Inner HTML
+  inner,
+  className = "form-control--flexible",
+}) {
+  // Checkbox needs form-control--checkbox
+  return `<div class="form-control ${className} form-control--type-${id}">${inner}</div>`;
+}
+function formLabel({
+  // Element name, e.g. "organization-name"
+  id,
+  // Whether the field is required
+  required = false,
+  // Inner HTML (for backward compatibility) or label text
+  inner,
+  label,
+}) {
+  const text = inner != null ? inner : label || "";
+  const req = required
+    ? '<div class="marker-required marker-required--medium"></div>'
+    : "";
+  const opt = !required ? " (optional)" : "";
+  return `<label for="ec-${id}"><div class="ec-form__title ec-header-h6">${req}${esc(
+    text
+  )}${opt}</div></label>`;
+}
+function formPlaceholder({
+  // Inner HTML
+  inner,
+}) {
+  return `<div class="form-control__placeholder"><div class="form-control__placeholder-inner">${inner}</div></div>`;
+}
+function textInput({
+  // Element name, e.g. "organization-name"
+  id,
+  // Form field name, e.g. "organization"
+  name,
+  label,
+  value = "",
+  placeholder = "",
+  required = false,
+  type = "text",
+  autocomplete = "",
+}) {
+  return (
+    formLabel({ id, label, required }) +
+    formControl({
+      id,
+      inner: `
+      <input
+        id="ec-${id}"
+        class="form-control__text"
+        aria-label="${esc(label)}"
+        maxlength="255"
+        ${autocomplete ? `autocomplete="${esc(autocomplete)}"` : ""}
+        ${required ? "required" : ""}
+        type="${esc(type)}"
+        name="${esc(name)}"
+        value="${esc(value)}"
+      />${formPlaceholder({
+        inner: esc(placeholder),
+      })}`,
+    })
+  );
+}
+function selectInput({
+  id,
+  label,
+  value = "",
+  placeholder = "",
+  // Options for the select element; and array of {value: "", label: ""}
+  options = [],
+  required = false,
+}) {
+  const req = required
+    ? '<div class="marker-required marker-required--medium"></div>'
+    : "";
+  const opts = options
+    .map(
+      (o) =>
+        `<option value="${esc(o.value)}" ${
+          o.value === value ? "selected" : ""
+        }>${esc(o.label)}</option>`
+    )
+    .join("");
+  return (
+    formLabel({ id, label, required }) +
+    formControl({
+      id,
+      inner: `<input
+        class="form-control__text"
+        type="text"
+        readonly=""
+        tabindex="-1"
+        aria-label="${esc(label)}"
+      /><select
+        class="form-control__select"
+        name="${id}-list"
+        ${required ? "required" : ""}
+        aria-label="${esc(label)}"
+        id="ec-${id}"
+        aria-describedby="ec-${id}-input-msg"
+      >${opts}</select>${formPlaceholder({
+        inner: esc(placeholder),
+      })}`,
+    }) +
+    formMessage({
+      id,
+      inner: "",
+    })
+  );
+}
+function checkboxInput({
+  // Element name, e.g. "organization-name"
+  id,
+  // Form field name, e.g. "organization"
+  name,
+  label,
+  checked = false,
+}) {
+  const checkboxId = `form-control__checkbox-${id}`;
+  return formControl({
+    id,
+    className: "form-control--checkbox",
+    inner: `
+      <div class="form-control__checkbox-wrap">
+        <input
+          class="form-control__checkbox"
+          type="checkbox"
+          ${checked ? "checked" : ""}
+          name="${name}"
+          id="${checkboxId}"
+        />
+        <div class="form-control__checkbox-view">
+          <svg
+            width="27"
+            height="23"
+            viewBox="0 0 27 23"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              class="svg-line-check"
+              d="M1.97 11.94L10.03 20 25.217 2"
+              fill="none"
+              fill-rule="evenodd"
+              stroke="currentColor"
+              stroke-width="3"
+              stroke-linecap="round"
+            ></path>
+          </svg>
+        </div>
+      </div>
+      <div class="form-control__inline-label">
+        <label for="${checkboxId}">${esc(label)}</label>
+      </div>`,
+  });
+}
+
+// HTML escaping helper
+function esc(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// Generic HTML element helpers
+function div({ class: className = "", inner = "" }) {
+  return `<div class="${className}">${inner}</div>`;
+}
+function span({ class: className = "", inner = "" }) {
+  return `<span class="${className}">${inner}</span>`;
+}
+function button({
+  id = "",
+  class: className = "",
+  type = "button",
+  inner = "",
+}) {
+  return `<button ${
+    id ? `id="${id}"` : ""
+  } class="${className}" type="${type}">${inner}</button>`;
 }
 function getCountryOptions() {
-  return ["US","CA","GB","AU","NZ","FR","DE","IT","ES","NL","BE","CH","AT","SE","DK","NO","FI","IE","PL","CZ","PT","GR","HU","RO","BG","HR","LT","LV","EE","SI","SK","LU","MT","CY","MX","BR","AR","CL","CO","PE","VE","EC","UY","PY","BO","CR","PA","GT","HN","SV","NI","DO","CU","JM","TT","BS","BB","BZ","GY","SR","GF","FK","AE","SA","IL","TR","EG","ZA","NG","KE","GH","MA","TN","DZ","ET","UG","TZ","SN","CI","CM","AO","ZW","MZ","MW","ZM","BW","NA","RW","MU","SC","MG","RE","YT","KM","DJ","SO","ER","SD","LY","TG","BJ","BF","ML","NE","TD","MR","GM","GN","SL","LR","GW","ST","CV","IN","CN","JP","KR","SG","MY","TH","ID","PH","VN","BD","PK","LK","NP","MM","KH","LA","BN","MO","HK","TW","MN","KZ","UZ","TM","TJ","KG","AF","IR","IQ","JO","LB","SY","YE","OM","KW","BH","QA","AM","AZ","GE","RU","UA","BY","MD","RO","BG","RS","HR","BA","ME","MK","AL","XK","SI","SK","CZ","PL","HU","LT","LV","EE","IS","GL","FO","SJ","AX"];
+  return [
+    { value: "US", label: "United States" },
+    { value: "UM", label: "United States Minor Outlying Islands" },
+    { value: "VI", label: "Virgin Islands, U.S." },
+  ];
 }
 
 async function renderOrUpdateAccountRegister() {
-  const container = queryAccountBody();
-  if (!container) return;
-  const root = hijackAccountBody(container);
-  if (!root) return;
-  trackWholesaleEvent("wholesale_registration_view", {});
-  const customer = await fetchLoggedInCustomer();
-  const defs = await loadCheckoutExtraFieldDefsSafe();
-  const model = {
-    email: customer?.email || "",
-    name: customer?.billingPerson?.name || customer?.name || "",
-    phone: customer?.billingPerson?.phone || "",
-    companyName: customer?.billingPerson?.companyName || "",
-    postalCode: customer?.billingPerson?.postalCode || "",
-    countryCode: customer?.billingPerson?.countryCode || "US",
-    acceptMarketing: customer?.acceptMarketing || false
-  };
-  root.innerHTML = `
+  // Prevent re-entry during rendering to avoid observer loops
+  if (RENDERING_ACC_FORM) return;
+  RENDERING_ACC_FORM = true;
+
+  try {
+    const container = queryAccountBody();
+    if (!container) return;
+    const root = hijackAccountBody(container);
+    if (!root) return;
+    trackWholesaleEvent("wholesale_registration_view", {});
+    const customer = await fetchLoggedInCustomer();
+    // Prefer App Storage for extra field definitions (fallback to checkout when needed)
+    const defs = await loadCustomerExtraDefsSafe();
+    const model = {
+      email: customer?.email || "",
+      name: customer?.billingPerson?.name || customer?.name || "",
+      phone: customer?.billingPerson?.phone || "",
+      companyName: customer?.billingPerson?.companyName || "",
+      postalCode: customer?.billingPerson?.postalCode || "",
+      countryCode: customer?.billingPerson?.countryCode || "US",
+      acceptMarketing:
+        (customer?.isAcceptedMarketing ?? customer?.acceptMarketing) || false,
+    };
+    root.innerHTML = `
     <div>
       <p><span class="ec-cart-step__mandatory-fields-notice">All fields are required unless they're explicitly marked as optional.</span></p>
       <form id="wr-acc-form" class="ec-form" action onsubmit="return false">
-        ${formRow(`
-          <label for="wr-email-ro"><div class="ec-form__title ec-header-h6">Email</div></label>
-          <div class="form-control form-control--flexible">
-            <input id="wr-email-ro" class="form-control__text" type="email" value="${model.email}" disabled style="background:#f5f5f5;color:#666;cursor:not-allowed;" />
-          </div>
-        `)}
-        ${formRow(`
-          <div class="ec-form__cell ec-form__cell--8 ec-form__cell-name">
-            ${textInput({ id:"wr-name", label:"First and last name", value:model.name, required:true, autocomplete:"shipping name" })}
-          </div>
-          <div class="ec-form__cell ec-form__cell--4 ec-form__cell--phone">
-            ${textInput({ id:"wr-phone", label:"Phone", value:model.phone, required:true, autocomplete:"shipping tel", type:"tel" })}
-          </div>
-        `)}
-        ${formRow(textInput({ id:"wr-company", label:"Company name", value:model.companyName, required:true, autocomplete:"shipping organization" }))}
-        ${formRow(`
-          <div class="ec-form__cell ec-form__cell--8">
-            ${textInput({ id:"wr-zip", label:"ZIP / Postal code", value:model.postalCode, required:true, autocomplete:"shipping postal-code" })}
-          </div>
-          <div class="ec-form__cell ec-form__cell--4">
-            ${selectInput({ id:"wr-country", label:"Country", value:model.countryCode, options:getCountryOptions(), required:true })}
-          </div>
-        `)}
-        ${defs?.tax ? formRow(textInput({ id:"wr-tax", label:defs.tax.title || "Tax ID", required:!!defs.tax.required, placeholder:defs.tax.placeholder })) : ""}
-        ${defs?.cell ? formRow(textInput({ id:"wr-cell", label:defs.cell.title || "Cell Phone", placeholder:defs.cell.placeholder, type:"tel" })) : ""}
-        ${defs?.hear ? formRow((defs.hear.type==="select" && defs.hear.options?.length)
-          ? selectInput({ id:"wr-hear", label:defs.hear.title || "How did you hear about us?", options:defs.hear.options })
-          : textInput({ id:"wr-hear", label:defs.hear.title || "How did you hear about us?", placeholder:defs.hear.placeholder })
-        ) : ""}
-        ${formRow(checkboxInput({ id:"wr-marketing", label:"I would like to receive marketing emails", checked:model.acceptMarketing }))}
-        <div class="ec-form__row ec-form__row--continue">
-          <div class="ec-form__cell ec-form__cell--6">
-            <div class="form-control form-control--button form-control--large form-control--primary form-control--flexible form-control--done">
-              <button id="wr-acc-submit" class="form-control__button" type="button">
-                <div class="form-control__loader"></div>
-                <span class="form-control__button-text">Continue</span>
-              </button>
-            </div>
-          </div>
-        </div>
-        <div id="wr-acc-msg" class="form__msg" style="margin-top:8px;"></div>
+        ${formRow(
+          formCell({
+            key: "email",
+            inner:
+              formLabel({
+                id: "email-readonly",
+                label: "Email",
+                required: true,
+              }) +
+              formControl({
+                id: "email-readonly",
+                inner: `
+                  <input
+                    id="ec-email-readonly"
+                    class="form-control__text"
+                    type="email"
+                    value="${esc(model.email)}"
+                    readonly
+                  />${formPlaceholder({ inner: "" })}
+                `,
+              }),
+          })
+        )}
+        ${formRow(
+          formCell({
+            key: "country",
+            inner: selectInput({
+              id: "country",
+              name: "country",
+              label: "Country",
+              value: model.countryCode,
+              options: getCountryOptions(),
+              required: true,
+            }),
+          })
+        )}
+        ${formRow(
+          formCell({
+            key: "name",
+            inner: textInput({
+              id: "name",
+              label: "First and last name",
+              value: model.name,
+              required: true,
+              autocomplete: "shipping name",
+            }),
+          })
+        )}
+        ${formRow(
+          formCell({
+            key: "company-name",
+            inner: textInput({
+              id: "company",
+              name: "organization",
+              label: "Company name",
+              value: model.companyName,
+              required: true,
+              autocomplete: "shipping organization",
+            }),
+          })
+        )}
+        ${formRow(
+          formCell({
+            key: "zip",
+            width: "4",
+            inner: textInput({
+              id: "zip",
+              name: "postal-code",
+              label: "ZIP or ZIP+4",
+              value: model.postalCode,
+              required: true,
+              autocomplete: "shipping postal-code",
+            }),
+          }) +
+            formCell({
+              key: "phone",
+              width: "4",
+              inner: textInput({
+                id: "phone",
+                label: "Phone",
+                value: model.phone,
+                required: true,
+                autocomplete: "shipping tel",
+                type: "tel",
+              }),
+            }) +
+            (defs?.cell
+              ? formCell({
+                  key: "cell",
+                  width: "4",
+                  inner: textInput({
+                    id: "cell",
+                    label: defs.cell.title || "Cell phone",
+                    placeholder: defs.cell.placeholder,
+                    type: "text",
+                  }),
+                })
+              : "")
+        )}
+        ${
+          defs?.tax
+            ? formRow(
+                formCell({
+                  key: "tax-id",
+                  width: "4",
+                  inner: textInput({
+                    id: "tax-id",
+                    label: defs.tax.title || "Tax ID",
+                    required: !!defs.tax.required,
+                    placeholder: defs.tax.placeholder,
+                  }),
+                })
+              )
+            : ""
+        }
+        ${
+          defs?.hear
+            ? formRow(
+                formCell({
+                  key: "hear",
+                  inner:
+                    // TODO: field is currently not a select type, but should be; check data
+                    defs.hear.type === "select" && defs.hear.options?.length
+                      ? selectInput({
+                          id: "wr-hear",
+                          label:
+                            defs.hear.title || "How did you hear about us?",
+                          options: defs.hear.options.map((o) => ({
+                            value: o.title,
+                            label: o.title,
+                          })),
+                        })
+                      : textInput({
+                          id: "wr-hear",
+                          label:
+                            defs.hear.title || "How did you hear about us?",
+                          placeholder: defs.hear.placeholder,
+                        }),
+                })
+              )
+            : ""
+        }
+        ${formRow(
+          formCell({
+            key: "accept-marketing",
+            inner: checkboxInput({
+              id: "accept-marketing",
+              name: "accept-marketing",
+              label: "I would like to receive marketing emails",
+              checked: model.acceptMarketing,
+            }),
+          })
+        )}
+        ${formRow(
+          formCell({
+            key: "continue",
+            inner: div({
+              class:
+                "form-control form-control--button form-control--large form-control--primary form-control--flexible form-control--done",
+              inner: button({
+                id: "acc-submit",
+                class: "form-control__button",
+                type: "button",
+                inner: span({
+                  class: "form-control__button-text",
+                  inner: "Continue",
+                }),
+              }),
+            }),
+          })
+        )}
+        <div id="acc-input-msg" class="form__msg"></div>
       </form>
     </div>`;
-  attachAccountRegisterHandlers(root, defs);
+    initAccountRegisterFormUI(root);
+    attachAccountRegisterHandlers(root, defs);
+  } finally {
+    // Allow next render after microtask
+    setTimeout(() => {
+      RENDERING_ACC_FORM = false;
+    }, 0);
+  }
+}
+
+function initAccountRegisterFormUI(root) {
+  try {
+    // Apply select-specific classes and arrow, and sync overlay text input value
+    root.querySelectorAll(".form-control__select").forEach((sel) => {
+      const control = sel.closest(".form-control");
+      if (!control) return;
+      control.classList.add("form-control--select");
+      // Arrow
+      if (!control.querySelector(".form-control__arrow")) {
+        const arrow = document.createElement("div");
+        arrow.className = "form-control__arrow";
+        arrow.innerHTML =
+          '<svg width="12" height="12" viewBox="0 0 12 12" xmlns="http://www.w3.org/2000/svg"><path d="M11 4L6 9 1 4" fill="none" fill-rule="evenodd" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
+        control.appendChild(arrow);
+      }
+      // Overlay readonly input is the preceding .form-control__text
+      const overlay = control.querySelector(".form-control__text");
+      const sync = () => {
+        const opt = sel.options[sel.selectedIndex];
+        if (overlay) overlay.value = opt ? opt.text : "";
+        if (!sel.value) control.classList.add("form-control--empty");
+        else control.classList.remove("form-control--empty");
+      };
+      sel.addEventListener("change", sync);
+      sync();
+    });
+
+    // Text inputs: toggle empty state
+    root.querySelectorAll(".form-control__text").forEach((inp) => {
+      const control = inp.closest(".form-control");
+      if (!control) return;
+      const toggle = () => {
+        if (!inp.value) control.classList.add("form-control--empty");
+        else control.classList.remove("form-control--empty");
+      };
+      inp.addEventListener("input", toggle);
+      toggle();
+    });
+  } catch (e) {
+    console.warn("Wholesale Reg: initAccountRegisterFormUI failed", e);
+  }
+}
+
+/**
+ * Resolve the key to use for an extra field definition.
+ * Prefers def.key, falls back to def.title.
+ */
+function resolveExtraFieldKey(def) {
+  if (def?.key) return def.key;
+  // fallback to title if absolutely needed (least preferred)
+  return String(def?.title || "").trim();
+}
+
+/**
+ * Convert an extra field definition to the shape expected by Ecwid checkout.
+ */
+function toCheckoutExtraFieldDef(def, { forceSectionsFor } = {}) {
+  if (!def) return null;
+  const isSelect = def.type === "select";
+  // Provide safe defaults when sections are missing
+  const defaultsByTitle = {
+    "tax id": {
+      checkoutDisplaySection: "email",
+      orderDetailsDisplaySection: "customer_info",
+      orderBy: 2,
+    },
+    "how did you hear about us?": {
+      checkoutDisplaySection: "payment_details",
+      orderDetailsDisplaySection: "billing_info",
+      orderBy: 3,
+    },
+    "cell phone": {
+      checkoutDisplaySection: "shipping_details",
+      orderDetailsDisplaySection: "customer_info",
+      orderBy: 4,
+    },
+  };
+  const lowTitle = (def.title || "").toLowerCase();
+  const fallback = defaultsByTitle[lowTitle] || {};
+
+  return {
+    type: def.type || "text",
+    title: def.title || "",
+    checkoutDisplaySection:
+      def.checkoutDisplaySection || fallback.checkoutDisplaySection || "email",
+    cpField: def.cpField ?? true,
+    options: isSelect && def.options ? def.options : undefined,
+    textPlaceholder: def.placeholder || "",
+    available: def.available ?? true,
+    required: !!def.required,
+    orderDetailsDisplaySection:
+      def.orderDetailsDisplaySection ||
+      fallback.orderDetailsDisplaySection ||
+      "customer_info",
+    showInInvoice: def.showInInvoice ?? false,
+    showInNotifications: def.showInNotifications ?? false,
+    saveToCustomerProfile: def.saveToCustomerProfile ?? false,
+    orderBy:
+      typeof def.orderBy === "number" ? def.orderBy : fallback.orderBy ?? 0,
+  };
 }
 
 function buildStorefrontUpdatePayload(values, defs) {
   const updatedCustomer = {
     name: values.name,
     acceptMarketing: !!values.acceptMarketing,
+    // billingPerson changes do not register
+    /*
     billingPerson: {
       name: values.name || "",
       companyName: values.companyName || "",
+      street: values.street || "",
+      city: values.city || "",
+      countryCode: values.countryCode || "US",
       postalCode: values.postalCode || "",
+      stateOrProvinceCode: values.stateOrProvinceCode || "",
       phone: values.phone || "",
-      countryCode: values.countryCode || "US"
-    }
-  };
-  const extraFields = {};
-  const mapToUpdate = {};
-  const push = (def, val) => {
-    if (!def || !val) return;
-    const key = def.key || def.title;
-    mapToUpdate[key] = {
-      title: def.title, type: def.type || "text",
-      available: true, required: !!def.required, cpField: true
-    };
-    extraFields[key] = { title: def.title, value: val };
-  };
-  push(defs.tax, values.taxId);
-  push(defs.cell, values.cellPhone);
-  push(defs.hear, values.hear);
-
-  return {
-    updatedCustomer,
-    checkout: {
-      extraFields,
-      removedExtraFieldsKeys: [],
-      extraFieldsPayload: { mapToUpdate, keysToRemove: [], updateMode: "UPDATE_HIDDEN" }
     },
-    lang: "en"
+    */
+    // shippingAddresses changes do not register
+    /*
+    shippingAddresses: [
+      {
+        id: 0,
+        person: {
+          name: values.name || "",
+          companyName: values.companyName || "",
+          street: values.street || "",
+          city: values.city || "",
+          countryCode: values.countryCode || "US",
+          postalCode: values.postalCode || "",
+          stateOrProvinceCode: values.stateOrProvinceCode || "",
+          phone: values.phone || "",
+        },
+      },
+    ],
+    */
+    isAcceptedMarketing: !!values.acceptMarketing,
+    // taxId cannot have certain characters, or is length limited
+    taxId: values.taxId || "",
+    // customerGroupId changes do not register
+    customerGroupId: "25614001",
+    // contacts changes do not register
+    contacts: [
+      {
+        type: "PHONE",
+        default: true,
+        contact: values.phone || "",
+        note: "a little note for you",
+      },
+    ],
   };
+
+  const payload = {
+    updatedCustomer,
+    lang: "en",
+  };
+
+  return payload;
 }
 
 function attachAccountRegisterHandlers(root, defs) {
   const getVals = () => ({
-    name: document.getElementById("wr-name")?.value.trim() || "",
-    phone: document.getElementById("wr-phone")?.value.trim() || "",
-    companyName: document.getElementById("wr-company")?.value.trim() || "",
-    postalCode: document.getElementById("wr-zip")?.value.trim() || "",
-    countryCode: document.getElementById("wr-country")?.value || "US",
-    acceptMarketing: document.getElementById("wr-marketing")?.checked || false,
-    taxId: document.getElementById("wr-tax")?.value.trim() || "",
-    cellPhone: document.getElementById("wr-cell")?.value.trim() || "",
-    hear: document.getElementById("wr-hear")?.value || ""
+    name: document.getElementById("ec-name")?.value.trim() || "",
+    phone: document.getElementById("ec-phone")?.value.trim() || "",
+    companyName: document.getElementById("ec-company")?.value.trim() || "",
+    postalCode: document.getElementById("ec-zip")?.value.trim() || "",
+    countryCode: document.getElementById("ec-country")?.value || "US",
+    acceptMarketing:
+      document.getElementById("form-control__checkbox-accept-marketing")
+        ?.checked || false,
+    taxId: document.getElementById("ec-tax-id")?.value.trim() || "",
+    cellPhone: document.getElementById("ec-cell")?.value.trim() || "",
+    hear: document.getElementById("ec-wr-hear")?.value || "",
   });
 
   const clearErrors = () => {
-    root.querySelectorAll(".form-control--error").forEach(el => el.classList.remove("form-control--error"));
-    root.querySelectorAll(".form__msg--error").forEach(el => el.remove());
-    root.querySelectorAll("[aria-invalid]").forEach(el => el.removeAttribute("aria-invalid"));
+    root
+      .querySelectorAll(".form-control--error")
+      .forEach((el) => el.classList.remove("form-control--error"));
+    root.querySelectorAll(".form__msg--error").forEach((el) => el.remove());
+    root
+      .querySelectorAll("[aria-invalid]")
+      .forEach((el) => el.removeAttribute("aria-invalid"));
   };
 
   const showFieldError = (fieldId, message) => {
     const input = document.getElementById(fieldId);
     if (!input) return;
     const control = input.closest(".form-control");
-    if (control) {
-      control.classList.add("form-control--error");
-      const errDiv = document.createElement("div");
+    const msgId = `${fieldId}-input-msg`;
+
+    // Find or create the error message node
+    let errDiv = document.getElementById(msgId);
+    if (!errDiv) {
+      errDiv = document.createElement("div");
+      errDiv.id = msgId;
       errDiv.className = "form__msg form__msg--error";
-      errDiv.id = `${fieldId}-msg`;
-      errDiv.textContent = message;
-      control.appendChild(errDiv);
-      input.setAttribute("aria-invalid", "true");
-      input.setAttribute("aria-describedby", `${fieldId}-msg`);
+      // Append to control's parent (for selects) or control itself (for inputs)
+      (control?.parentElement || control || input).appendChild(errDiv);
+    } else {
+      // Reuse existing message node, just add error class
+      errDiv.classList.add("form__msg--error");
     }
+
+    errDiv.textContent = message;
+    if (control) control.classList.add("form-control--error");
+    input.setAttribute("aria-invalid", "true");
+    input.setAttribute("aria-describedby", msgId);
   };
 
   const validateCountryCode = (code) => {
     const validCodes = getCountryOptions();
-    return validCodes.includes(code);
+    return validCodes.some((o) => o.value === code);
   };
 
-  const btn = root.querySelector("#wr-acc-submit");
-  const msg = root.querySelector("#wr-acc-msg");
+  const btn = root.querySelector("#acc-submit");
+  const msg = root.querySelector("#acc-input-msg");
 
   btn?.addEventListener("click", async () => {
     clearErrors();
@@ -1112,17 +1731,20 @@ function attachAccountRegisterHandlers(root, defs) {
     // Validate required fields
     let firstInvalid = null;
     const setInvalid = (id, message) => {
-      showFieldError(id, message);
-      if (!firstInvalid) firstInvalid = document.getElementById(id);
+      const eid = id.startsWith("ec-") ? id : `ec-${id}`;
+      showFieldError(eid, message);
+      if (!firstInvalid) firstInvalid = document.getElementById(eid);
     };
 
-    if (!v.name) setInvalid("wr-name", "Name is required");
-    if (!v.phone) setInvalid("wr-phone", "Phone is required");
-    if (!v.companyName) setInvalid("wr-company", "Company name is required");
-    if (!v.postalCode) setInvalid("wr-zip", "ZIP / Postal code is required");
-    if (!v.countryCode) setInvalid("wr-country", "Country is required");
-    else if (!validateCountryCode(v.countryCode)) setInvalid("wr-country", "Invalid country code");
-    if (defs.tax?.required && !v.taxId) setInvalid("wr-tax", "Tax ID is required");
+    if (!v.name) setInvalid("name", "Name is required");
+    if (!v.phone) setInvalid("phone", "Phone is required");
+    if (!v.companyName) setInvalid("company", "Company name is required");
+    if (!v.postalCode) setInvalid("zip", "ZIP / Postal code is required");
+    if (!v.countryCode) setInvalid("country", "Country is required");
+    else if (!validateCountryCode(v.countryCode))
+      setInvalid("country", "Invalid country code");
+    if (defs.tax?.required && !v.taxId)
+      setInvalid("tax-id", "Tax ID is required");
 
     if (firstInvalid) {
       firstInvalid.focus();
@@ -1135,23 +1757,39 @@ function attachAccountRegisterHandlers(root, defs) {
 
     try {
       const body = buildStorefrontUpdatePayload(v, defs);
-      await postStorefrontCustomerUpdate(body);
+      const res = await fetchStorefrontCustomerUpdate(body);
+      /*
+Response can be either:
+1. Authorized customer object: { billingPerson, email, id, name, ... }
+2. Checkout response: { checkout, checkoutSettings, ... }
+The exact shape depends on the session state and request payload.
+Success is determined by the absence of errors (caught in catch block).
+*/
       trackWholesaleEvent("wholesale_registration_success", {});
       msg.textContent = "Registration submitted successfully!";
       msg.className = "form__msg";
 
       // Refresh Ecwid config
       if (typeof Ecwid.refreshConfig === "function") {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 500));
         Ecwid.refreshConfig();
       }
 
-      // Redirect to /products with success banner
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      showRegistrationSuccessBanner();
-      window.location.href = "/products";
+      // Set flag for success banner on redirect
+      try {
+        sessionStorage.setItem("wr-success", "1");
+      } catch (e) {
+        // Ignore sessionStorage errors
+      }
+
+      // Redirect to /products
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      // TODO: uncomment when done debugging
+      // window.location.href = "/products";
     } catch (err) {
-      trackWholesaleEvent("wholesale_registration_failure", { error: err.message });
+      trackWholesaleEvent("wholesale_registration_failure", {
+        error: err.message,
+      });
       msg.textContent = "Registration failed. Please try again.";
       msg.className = "form__msg form__msg--error";
     }
@@ -1174,7 +1812,8 @@ function showRegistrationSuccessBanner() {
   banner.style.padding = "12px 16px";
   banner.style.textAlign = "center";
   banner.style.fontWeight = "600";
-  banner.innerHTML = "Your wholesale registration has been submitted. We will review your application and update your account shortly.";
+  banner.innerHTML =
+    "Your wholesale registration has been submitted. We will review your application and update your account shortly.";
   document.body.appendChild(banner);
   setTimeout(() => removeNodeById(id), 8000);
 }

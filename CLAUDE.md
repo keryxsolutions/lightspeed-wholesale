@@ -7,16 +7,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is a Lightspeed (Ecwid) custom storefront app that enhances e-commerce functionality with wholesale features, category banners, and product tags. The app runs entirely on the storefront using Ecwid's Storefront JS API and REST endpoints.
 
 **Key Features:**
-- Wholesale price visibility control (hide for guests, show for logged-in wholesale members)
-- Category banner with full-width image and text overlay
-- Product tag display from TAGS attributes
-- Wholesale registration flow integrated into Ecwid's account pages
+- **Wholesale Gating** — Price visibility control (hide for guests, show for logged-in wholesale members)
+- **Category Banners** — Full-width image hero banners with description overlays
+- **Product Tags** — Tag display from TAGS attributes below product descriptions
+- **Wholesale Registration** — Account-based registration flow integrated into Ecwid's account pages
 
 **Important Constraints:**
 - Only `app.js` and `app.css` are loaded by Lightspeed
 - All logic must run client-side on the storefront
 - No custom backend or proxy server
 - Uses Ecwid Storefront JS API and public REST endpoints only
+
+## Product Requirements (PRDs)
+
+Each feature has a dedicated PRD with detailed specifications, acceptance criteria, and implementation notes:
+
+- **[docs/registration.prd](docs/registration.prd)** — Wholesale registration flow (Phase 1 complete, Phase 2 pending)
+- **[docs/wholesale-gating.prd](docs/wholesale-gating.prd)** — Price visibility and customer group detection (production-ready)
+- **[docs/category-banners.prd](docs/category-banners.prd)** — Hero banner rendering (production-ready)
+- **[docs/product-tags.prd](docs/product-tags.prd)** — Tag display (Phase 1 complete, Phase 2 pending)
+
+**Master PRD Index:** [docs/wholesale-registration-master.prd](docs/wholesale-registration-master.prd) — Overview, cross-cutting concerns, and modularization roadmap
 
 ## Development Commands
 
@@ -92,12 +103,13 @@ The application is organized into four main initialization functions called from
 
 The registration form dynamically loads Customer Extra Field definitions:
 
-1. **Primary Source**: `ec.order.extraFields` or `ec.checkout.extraFields` (lines 872-876)
-   - Storefront state objects populated by Ecwid
-   - Contains field metadata: key, title, placeholder, type, options, required
+1. **Primary Source**: `Ecwid.getAppPublicConfig(clientId)["extraFields"]` (preferred, documented in [registration.prd](docs/registration.prd))
+   - App-controlled configuration published via App Storage or app settings
+   - Contains field metadata: key, title, type, textPlaceholder, required, options
 
 2. **Fallback Discovery** (lines 910-928):
-   - Call `POST /storefront/api/v1/{storeId}/customer/update` with minimal payload
+   - Use `ec.order.extraFields` or `ec.checkout.extraFields` from storefront state
+   - If unavailable, call `POST /storefront/api/v1/{storeId}/customer/update` with minimal payload
    - Parse `checkoutSettings.extraFields` from response
    - Cache normalized definitions for session
 
@@ -105,6 +117,8 @@ The registration form dynamically loads Customer Extra Field definitions:
    - `normalizeExtraDefs(map)` - Maps by key or title lookup
    - Expected fields: "Tax ID", "How did you hear about us?", "Cell Phone"
    - Returns consistent structure for form rendering
+
+**Note:** Current code uses `getAppPublicConfig(clientId)["extraFields"]` as primary source. See [registration.prd](docs/registration.prd) Section 4 for the canonical storage contract.
 
 ### SPA Navigation Handling
 
@@ -236,7 +250,7 @@ All REST calls should use:
 1. Modify field definitions in `loadCheckoutExtraFieldDefsSafe()` fallback (lines 922-927)
 2. Update `renderOrUpdateAccountRegister()` form HTML (lines 964-997)
 3. Update `buildStorefrontUpdatePayload()` mapping (lines 1001-1035)
-4. Update PRD in `docs/wholesale-registration-master.prd`
+4. Update PRD: [docs/registration.prd](docs/registration.prd) (canonical spec for registration feature)
 
 ### Debugging
 

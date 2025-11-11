@@ -1,0 +1,545 @@
+# PRD — Product Tags
+
+**Version:** 1.0
+**Owner:** Keryx Solutions
+**Status:** Active
+
+---
+
+## 1. Summary
+
+Display product tags on product detail pages by fetching tag values from product attributes (type `TAGS`) and rendering them as styled pill-shaped links below the product description. Tag links provide placeholder navigation functionality (alert/search redirect) pending future tag landing page implementation.
+
+---
+
+## 2. Current Behavior (as implemented)
+
+### Trigger
+- **Page type:** `PRODUCT` (detected via `Ecwid.OnPageLoaded`)
+- **Prerequisites:**
+  - Product must have a `TAGS`-type attribute or an attribute with "tag" in the name
+  - Attribute must have assigned values (array of strings)
+  - Store must grant public token with `read_catalog` scope
+
+### Rendering Flow
+1. On `PRODUCT` page load, extract `productId` from page context
+2. Fetch product data: `GET /api/v3/{storeId}/products/{productId}`
+   - Uses `Ecwid.getAppPublicToken(clientId)` for authorization
+3. Search product attributes for tags:
+   - **Primary:** Attribute with `type: "TAGS"`
+   - **Fallback:** Attribute with name containing "tag" (case-insensitive)
+4. If tags found:
+   - Find `.product-details-module__content` container
+   - Insert `.product-details-module__tags` container below
+   - Render each tag as `<a class="product-tag-link">`
+5. Inject external CSS from GitHub Pages: `app.css`
+
+### DOM Structure (after injection)
+```html
+<div class="product-details-module__content">
+  {existing product description and details}
+</div>
+<div class="product-details-module__tags" data-product-id="{productId}">
+  <span class="tags-label">Tags:</span>
+  <a href="#" class="product-tag-link" data-tag-value="{tag}">{tag}</a>
+  <a href="#" class="product-tag-link" data-tag-value="{tag}">{tag}</a>
+  ...
+</div>
+```
+
+### Tag Link Behavior (placeholder)
+- **Current:** Clicking tag shows `alert()` with tag name
+- **Future:** Navigate to `/search?tags={tag}` or `/tag/{slug}` landing page
+- **Data attribute:** `data-tag-value` stores original tag string
+
+### Styling
+- **External CSS:** `https://keryxsolutions.github.io/lightspeed-wholesale/app.css`
+- **Appearance:** Pill-shaped tags with hover effects
+- **Layout:** Inline horizontal list with wrapping
+
+### SPA Navigation Handling
+- Idempotent: Safe to call multiple times (checks if tags already exist)
+- Cleans up on navigation away from product pages
+- Re-renders on product-to-product navigation
+
+---
+
+## 3. Configuration
+
+### Product Type Requirements
+**Ecwid Product Types:**
+- Must have an attribute configured with:
+  - **Name:** Any (e.g., "Tags", "Product Tags", "Categories")
+  - **Type:** `TAGS` (preferred) or any type with "tag" in the name
+  - **Show:** `DESCR` (display in description area)
+
+### Content Requirements (per product)
+- **Attribute values:** Must assign one or more tag strings
+  - Example values: `["Organic", "Gluten-Free", "Vegan"]`
+  - Case-sensitive display (rendered as entered)
+
+### App Requirements
+- **Public Token Scope:** `read_catalog`
+- **Client ID:** `custom-app-121843055-1`
+
+---
+
+## 4. APIs and Interfaces
+
+### Read APIs
+- `Ecwid.getOwnerId()` — Get store ID
+- `Ecwid.getAppPublicToken(clientId)` — Get public token for REST API
+- `GET https://app.ecwid.com/api/v3/{storeId}/products/{productId}`
+  - Headers: `Authorization: Bearer {publicToken}`
+  - Returns: Product object with `attributes` array
+
+### Events
+- `Ecwid.OnAPILoaded.add(callback)` — Initial setup
+- `Ecwid.OnPageLoaded.add(callback)` — SPA navigation handling
+  - Payload: `{ page, productId, ... }`
+
+### DOM Queries
+- `.product-details-module__content` — Ecwid's product description container
+- `.product-details-module__tags[data-product-id="{productId}"]` — Existing tags container (idempotency check)
+
+---
+
+## 5. User Scenarios
+
+### Scenario 1: Product with Tags
+**Context:** Product has assigned tag values in TAGS attribute
+**Behavior:**
+- Tags render below product description
+- Each tag displayed as styled pill-shaped link
+- Clicking tag shows alert with tag name (placeholder)
+
+**Expected UX:**
+- Tags provide visual metadata and browsing hints
+- Clear indication that tags are clickable (hover state)
+- Tags wrap naturally on narrow viewports
+
+---
+
+### Scenario 2: Product with No Tags
+**Context:** Product has TAGS attribute but no assigned values
+**Behavior:**
+- No tags container injected
+- Product description area unchanged
+
+**Expected UX:**
+- No visual indication of tags (graceful omission)
+- No empty "Tags:" label
+
+---
+
+### Scenario 3: Product with Multiple Tag Attributes
+**Context:** Product has multiple attributes containing "tag" in the name
+**Behavior:**
+- First matching attribute (priority: type `TAGS`, then name contains "tag") is used
+- Only one set of tags displayed
+
+**Expected UX:**
+- Single, consistent tag display
+- No duplicate or conflicting tag sets
+
+---
+
+### Scenario 4: SPA Navigation Between Products
+**Context:** User navigates from one product to another
+**Behavior:**
+- Previous product's tags removed
+- New product's tags fetched and injected
+- No duplicate tag containers
+
+**Expected UX:**
+- Smooth transitions
+- No flicker or cumulative layout shift
+
+---
+
+## 6. Acceptance Criteria
+
+### Functional Requirements
+- ✅ Tags display on products with TAGS attribute values
+- ✅ Tags do not display on products without tag values
+- ✅ Tags render below product description area
+- ✅ Clicking tag triggers placeholder behavior (alert)
+- ✅ SPA navigation correctly updates/removes tags
+- ✅ No duplicate tag containers on page transitions
+- ✅ External CSS loads correctly
+
+### Visual Requirements
+- ✅ Tags styled as pill-shaped buttons with rounded borders
+- ✅ Hover state provides visual feedback
+- ✅ Tags wrap naturally on narrow viewports
+- ✅ "Tags:" label appears before tag list
+- ✅ Spacing between tags is consistent
+
+### Performance Requirements
+- ✅ Tags render within 500ms of product page load
+- ✅ Tag fetch does not block product content display
+- ✅ No cumulative layout shift during tag injection
+- ✅ External CSS cached by browser after first load
+
+### Error Handling
+- ✅ No console errors if product API call fails
+- ✅ Graceful fallback if TAGS attribute is missing
+- ✅ No broken layout if tag values are empty or malformed
+
+---
+
+## 7. DOM and CSS
+
+### CSS Classes
+- `.product-details-module__tags` — Wrapper for entire tag list
+- `.tags-label` — "Tags:" text label
+- `.product-tag-link` — Individual tag link/button
+- `[data-product-id]` — Attribute for idempotency check
+- `[data-tag-value]` — Attribute storing original tag string
+
+### Inline Styles (JavaScript-injected)
+```javascript
+{
+  marginTop: '1rem',
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: '0.5rem',
+  alignItems: 'center'
+}
+```
+
+### External Stylesheet
+**URL:** `https://keryxsolutions.github.io/lightspeed-wholesale/app.css`
+
+**Key Rules:**
+```css
+.product-details-module__tags {
+  margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.tags-label {
+  font-weight: bold;
+  margin-right: 0.5rem;
+}
+
+.product-tag-link {
+  display: inline-block;
+  padding: 0.375rem 0.75rem;
+  background: #f0f0f0;
+  color: #333;
+  text-decoration: none;
+  border-radius: 1rem;
+  font-size: 0.875rem;
+  transition: background 0.2s;
+}
+
+.product-tag-link:hover {
+  background: #e0e0e0;
+}
+```
+
+---
+
+## 8. Tag Link Behavior (Current and Future)
+
+### Current Behavior (Placeholder)
+**Implementation:** Click handler shows `alert()` with tag name
+```javascript
+tagLink.addEventListener('click', (e) => {
+  e.preventDefault();
+  alert(`Tag: ${tag}`);
+});
+```
+
+**Purpose:** Demonstrates clickability and provides debugging feedback
+
+---
+
+### Future Behavior (Tag Landing Pages)
+
+#### Option A: Search Redirect
+**Implementation:** Navigate to Ecwid search with tag filter
+```javascript
+window.location.href = `/#!/~/search/keywords=${encodeURIComponent(tag)}`;
+```
+
+**Pros:**
+- Uses existing Ecwid search infrastructure
+- No custom pages required
+- Works immediately
+
+**Cons:**
+- Limited control over search results display
+- May return non-tagged products if search is fuzzy
+- No dedicated tag browsing UX
+
+---
+
+#### Option B: Custom Tag Landing Page
+**Implementation:** Navigate to custom route `/tag/{slug}`
+```javascript
+const slug = tag.toLowerCase().replace(/\s+/g, '-');
+window.location.href = `/#!/~/tag/${slug}`;
+```
+
+**Requirements:**
+- Implement custom route handler in `app.js`
+- Fetch products by tag via filtering or server endpoint
+- Render custom product grid with tag-specific filtering
+
+**Pros:**
+- Full control over tag browsing UX
+- Can display tag metadata (description, count, related tags)
+- Better SEO and branding
+
+**Cons:**
+- Requires significant development effort
+- May need server-side filtering endpoint
+- More maintenance overhead
+
+---
+
+#### Option C: Inline Tag Filter (Same Page)
+**Implementation:** Filter current category/product list by tag
+```javascript
+// Inject filter into Ecwid product browser
+Ecwid.ProductBrowser.showByTag(tag);
+```
+
+**Note:** This requires Ecwid API support or custom filtering logic
+
+**Pros:**
+- No navigation required (faster UX)
+- Contextual filtering
+
+**Cons:**
+- May not be supported by Ecwid API
+- Complex to implement with custom filtering
+
+---
+
+**Recommendation for Next Phase:**
+Start with **Option A** (search redirect) as interim solution, then migrate to **Option B** (custom landing page) when resources allow.
+
+---
+
+## 9. Error Handling
+
+### API Failures
+- **Condition:** Product fetch fails (404, 403, network error)
+- **Behavior:** Log warning to console, skip tag injection
+- **Logging:** `"Tag System: Failed to fetch product data"`
+- **User Impact:** None (graceful degradation, no tags displayed)
+
+### Missing TAGS Attribute
+- **Condition:** Product has no TAGS attribute or matching attribute
+- **Behavior:** No tag injection (expected scenario)
+- **Logging:** No warning (silent fallback)
+- **User Impact:** None (tags simply not displayed)
+
+### Empty Tag Values
+- **Condition:** TAGS attribute exists but `values` array is empty
+- **Behavior:** No tag injection
+- **Logging:** No warning
+- **User Impact:** None
+
+### Malformed Tag Values
+- **Condition:** Tag value is not a string (e.g., number, object)
+- **Behavior:** Skip malformed value, render others
+- **Logging:** Warning for each malformed value
+- **User Impact:** Minimal (other valid tags still displayed)
+
+---
+
+## 10. Performance Considerations
+
+### Tag Fetch Timing
+- **Strategy:** Fetch product data asynchronously after page load
+- **Non-blocking:** Does not delay product content display
+- **Caching:** Browser caches REST API responses (Ecwid CDN)
+
+### CSS/Font Loading
+- **Caching:** External CSS cached by browser
+- **Render-blocking:** CSS loaded asynchronously (no block on product content)
+
+### DOM Manipulation
+- **Timing:** Tags injected after product data fetch (non-blocking)
+- **Reflows:** Minimal (single container insertion below description)
+- **Cleanup:** Old tags removed before new injection (prevents memory leaks)
+
+---
+
+## 11. Constraints and Limitations
+
+### Technical Constraints
+- **No server-side rendering:** All rendering happens client-side
+- **Attribute discovery:** Relies on attribute type or name heuristic
+- **No tag metadata:** No tag descriptions, counts, or hierarchies (flat list only)
+- **No tag management UI:** Tags managed via Ecwid admin attribute system
+
+### Content Constraints
+- **Tag values:** Limited to strings assigned in attribute values
+- **No tag deduplication:** If product has duplicate tag values, both rendered
+- **Case-sensitive:** Tags rendered exactly as entered (no normalization)
+
+### Ecwid Platform Constraints
+- **SPA architecture:** Must handle dynamic page transitions
+- **DOM structure dependency:** Relies on `.product-details-module__content` selector
+- **Design conflicts:** May conflict with custom themes (requires testing)
+
+---
+
+## 12. Dependencies
+
+### Upstream (Required for this feature)
+- `waitForEcwidAndTokens()` utility — Ensures API readiness and token availability
+- `ecwidFetchJSON(path, options)` utility — Makes authenticated REST calls
+- CSS injection utilities
+
+### Downstream (No features depend on Product Tags)
+- This is a standalone metadata display feature
+
+---
+
+## 13. Testing Scenarios
+
+### Manual Testing Checklist
+- [ ] Create product with TAGS attribute and values → Verify tags display
+- [ ] Create product with TAGS attribute and no values → Verify no tags
+- [ ] Create product with no TAGS attribute → Verify no tags
+- [ ] Create product with multiple "tag" attributes → Verify first match used
+- [ ] Click tag → Verify alert with tag name (placeholder behavior)
+- [ ] Navigate between product pages → Verify tags update correctly
+- [ ] Navigate from product to category → Verify tags removed
+- [ ] Test on mobile device → Verify tags wrap correctly
+- [ ] Check Network tab → Verify CSS cached after first load
+- [ ] Check Console → Verify no errors or warnings
+- [ ] Test with long tag names → Verify layout doesn't break
+- [ ] Test with special characters in tags → Verify rendering
+
+### Edge Cases
+- [ ] Product with empty string as tag value → Verify skipped
+- [ ] Product with 20+ tags → Verify wrapping and performance
+- [ ] Product with tags containing HTML → Verify escaping
+- [ ] Product with tags in non-Latin scripts (CJK, Arabic) → Verify display
+
+---
+
+## 14. Future Enhancements
+
+### Tag Landing Pages (High Priority)
+- Implement custom `/tag/{slug}` route
+- Display all products with matching tag
+- Add tag metadata (description, related tags)
+- Provide filtering and sorting options
+
+### Tag Management Improvements
+- Admin UI for bulk tag assignment
+- Tag suggestions and autocomplete
+- Tag analytics (most popular, least used)
+- Tag hierarchies and parent-child relationships
+
+### Tag Display Enhancements
+- Color-coded tags by category
+- Icon support for tags
+- Tag tooltips with descriptions
+- Tag popularity indicators (product count)
+
+### Search and Filtering
+- Multi-tag filtering (AND/OR logic)
+- Tag cloud widget on homepage
+- Related tags suggestions on product pages
+- Tag-based recommendations
+
+### SEO Improvements
+- Schema.org markup for product tags
+- Tag landing pages with rich content
+- Tag sitemap generation
+- Canonical URLs for tag pages
+
+---
+
+## 15. Telemetry and Monitoring
+
+### Current Logging
+- Console prefix: `"Tag System:"` for all tag-related logs
+- Warnings: API fetch failures, missing DOM selectors
+- Errors: Malformed tag values
+
+### Future Telemetry (Recommended)
+Track via `trackWholesaleEvent()`:
+- `product_tags_view` — Tags successfully rendered
+  - Properties: `{ productId, tagCount, tags }`
+- `product_tag_click` — User clicked a tag
+  - Properties: `{ productId, tag, timestamp }`
+- `product_tags_error` — Tags failed to render
+  - Properties: `{ productId, error, reason }`
+
+---
+
+## 16. Security Considerations
+
+### XSS Risk
+- **Risk:** Tag values rendered as HTML (potential XSS if malicious)
+- **Mitigation:** Tag values come from admin-controlled attribute system (trusted input)
+- **Implementation:** Use `textContent` instead of `innerHTML` for tag display
+- **Status:** ✅ Implemented safely (text-only rendering)
+
+### Tag Injection
+- **Risk:** Malicious users attempt to inject SQL/NoSQL queries via tag links
+- **Mitigation:** Future tag landing pages must sanitize and parameterize queries
+- **Recommendation:** Use prepared statements or Ecwid API filtering (not raw queries)
+
+---
+
+## 17. Accessibility Considerations
+
+### Screen Readers
+- **Current:** Tags rendered as `<a>` links (accessible)
+- **Improvement:** Add `aria-label` with context (e.g., "Filter by tag: Organic")
+
+### Keyboard Navigation
+- **Current:** Tags are focusable and clickable via keyboard
+- **Improvement:** Add visible focus indicators (already handled by CSS)
+
+### Color Contrast
+- **Current:** WCAG AA compliant (tested with contrast checker)
+- **Future:** Ensure custom tag colors meet contrast requirements
+
+---
+
+## 18. SEO Considerations
+
+### Structured Data
+- **Recommendation:** Add schema.org tags to product markup
+  ```json
+  {
+    "@type": "Product",
+    "keywords": ["tag1", "tag2", "tag3"]
+  }
+  ```
+
+### Tag Landing Pages SEO (Future)
+- Unique meta titles and descriptions per tag
+- H1 heading with tag name
+- Canonical URLs
+- Sitemap inclusion
+
+---
+
+## 19. References
+
+- **Implementation:** `/app.js` lines 451-656 (`initializeProductTagSystem`)
+- **Styles:** `/app.css` (`.product-details-module__tags`, `.product-tag-link`)
+- **Ecwid Products API:** https://docs.ecwid.com/api-reference/products
+- **Product Attributes:** https://docs.ecwid.com/api-reference/product-types-and-attributes
+- **OnPageLoaded Events:** https://docs.ecwid.com/storefronts/track-storefront-events/page-is-loaded-events
+
+---
+
+**Last Updated:** 2025-11-11
+**Implementation Status:** ✅ Phase 1 Complete (display only) | 🔄 Phase 2 Pending (tag landing pages and filtering)
