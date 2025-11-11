@@ -8,7 +8,7 @@
 
 ## 1. Summary
 
-Inject a registration form into `/products/account/register` for logged-in, non-wholesale users. Prefill customer data from `Ecwid.Customer.get()`. Save core profile fields via storefront `/customer/update` endpoint. Group assignment occurs server-side via Ecwid Automations or Webhooks (not handled by client code).
+Inject a registration form into `/products/account/register` for logged-in, non-wholesale users. Prefill customer data from `Ecwid.Customer.get()`. Submit registration to external **Ecwid Registration Server** using storefront session token for authentication. Server handles all Admin REST operations (customer profile updates, extra fields persistence, and immediate customer group assignment).
 
 ---
 
@@ -29,33 +29,74 @@ Data populated from `Ecwid.Customer.get()`:
 - Country Code (limited to US, UM, VI — intentional constraint)
 - Accept Marketing consent
 
-### Extra Field Definitions
+### Extra Field Definitions (UI Only)
 - Source: `Ecwid.getAppPublicConfig(clientId)["extraFields"]`
 - Expected shape: `{ items: [{ key, title, type, textPlaceholder, required, options? }] }`
-- Fallback: Discovery via `/storefront/api/v1/{storeId}/customer/update` response parsing
+- Purpose: **Display only** — client uses for labels, placeholders, and dropdown options
+- Server responsibility: Field key mapping and persistence via Admin REST API
 
 ### Submission Behavior
-Submits to: `POST /storefront/api/v1/{storeId}/customer/update`
+**Client submits to:** `POST {REG_SERVER_URL}/api/register`
+- Default server: `https://ecwid-registration.keryx-solutions.workers.dev`
+- Override via: `window.WHOLESALE_REG_SERVER_URL`
 
-**Currently Persisted:**
-- `updatedCustomer.name`
-- `updatedCustomer.acceptMarketing` and `updatedCustomer.isAcceptedMarketing`
-- `updatedCustomer.taxId`
-- `updatedCustomer.contacts` (PHONE type for main phone)
+**Authentication:**
+- Uses storefront session token as Bearer token
+- Retrieved via `Ecwid.Storefront.getSessionToken()` (preferred) or internal fallback
+- Header: `Authorization: Bearer {sessionToken}`
 
-**Not Yet Persisted:**
-- `billingPerson.*` fields (commented out in `buildStorefrontUpdatePayload()`)
-- `updatedCustomer.extraFields` (customer-level extra fields)
-- `checkout.extraFields` payload map
-- Cell Phone as customer extra field (form collects it but doesn't send)
+**Idempotency:**
+- Header: `Idempotency-Key: {UUID or random key}`
+- Enables safe retries on network failure
+- Server deduplicates requests with same key
 
-**Group Assignment:**
-- `customerGroupId` is included in payload stub but **ignored by endpoint**
-- Actual group assignment handled server-side via Automations/Webhooks triggered after customer update
+**Payload Structure:**
+```json
+{
+  "storeId": "121843055",
+  "lang": "en",
+  "values": {
+    "name": "...",
+    "companyName": "...",
+    "postalCode": "...",
+    "countryCode": "US",
+    "phone": "...",
+    "cellPhone": "...",
+    "taxId": "...",
+    "hear": "...",
+    "acceptMarketing": true
+  }
+}
+```
 
-**Post-Submit:**
-- Success redirect to `/products` is present in code but disabled for debugging purposes
-- No success banner currently shown (will be enabled when redirect is re-enabled)
+**Server Response (Success):**
+```json
+{
+  "status": "success",
+  "customerId": 123456789,
+  "groupId": 25614001
+}
+```
+
+**Server Responsibilities:**
+1. Validate session token and extract customer ID
+2. Update customer profile via Admin REST (`PUT /customers/{id}`)
+   - `billingPerson.*` fields
+   - `acceptMarketing`
+   - `taxId`
+   - `contacts` array (PHONE type)
+3. Persist customer extra fields via Admin REST
+   - Tax ID
+   - Cell Phone
+   - How did you hear about us?
+4. Assign customer to wholesale group (`customerGroupId`)
+5. Return success response with IDs
+
+**Client Post-Submit:**
+- Refresh storefront config: `Ecwid.refreshConfig()`
+- Set success flag: `sessionStorage.setItem("wr-success", "1")`
+- Redirect to `/products` (currently disabled for debugging)
+- Show success banner on redirect destination
 
 ### Country Options
 Limited to:
@@ -67,93 +108,132 @@ This is an **intentional constraint** for the current deployment.
 
 ---
 
-## 3. Target Behavior (future delta)
+## 3. Target Behavior (future enhancements)
 
-### Expanded Persistence
-- Persist `billingPerson` fields:
-  - `name`
-  - `companyName`
-  - `postalCode`
-  - `phone`
-  - `countryCode`
-- Persist customer extra fields:
-  - Tax ID (already done via `taxId`)
-  - Cell Phone (as customer extra field or via `contacts`)
-  - How did you hear about us?
-- Send `checkout.extraFields` map if required by Ecwid API updates
+### Redirect Flow
+- Enable success redirect to `/products` (currently disabled for debugging)
+- Show success banner after redirect
+- Auto-dismiss banner after 8 seconds
 
-### Post-Success Flow
-- Execute redirect to `/products` (currently disabled for debugging)
-- Show success banner on redirect destination
-- Clear session cache of registration state
-
-### Potential Future Enhancements
+### Country Expansion
 - Expand country list to ISO-3166-1 alpha-2 full set (if business requirements change)
-- Add server-side validation summary display for storefront API errors
-- Progressive enhancement: validate Tax ID format client-side before submit
+- Currently limited to US territories by design
+
+### Enhanced Validation
+- Client-side Tax ID format validation before submit
+- Real-time field validation as user types
+- Server-side validation error display with field-level mapping
+
+### Server Enhancements
+- Async registration with email confirmation
+- Multi-step approval workflow
+- Document upload support for business verification
 
 ---
 
 ## 4. APIs and Contracts
 
-### Read APIs
-- `Ecwid.Customer.get(callback)` — Current customer session data
-- `Ecwid.getAppPublicConfig(clientId)["extraFields"]` — Extra field definitions (preferred source)
-- Fallback: Parse `checkoutSettings.extraFields` from `/customer/update` response
+### Client Read APIs
+- `Ecwid.Customer.get(callback)` — Current customer session data for prefill
+- `Ecwid.getAppPublicConfig(clientId)["extraFields"]` — Extra field UI metadata (labels, options)
+- `Ecwid.Storefront.getSessionToken()` — Session token for server authentication
 
-### Write APIs
-- `POST https://app.ecwid.com/storefront/api/v1/{storeId}/customer/update`
-  - Requires `credentials: include` (sends session cookie)
-  - Payload structure:
-    ```json
-    {
-      "updatedCustomer": {
-        "name": "...",
-        "taxId": "...",
-        "acceptMarketing": true,
-        "isAcceptedMarketing": true,
-        "contacts": [{ "type": "PHONE", "value": "..." }]
-      },
-      "lang": "en"
-    }
-    ```
-  - **Note:** `billingPerson` and extra fields support will be added in future iteration
+### Client Write API
+- `POST {REG_SERVER_URL}/api/register`
+  - **Endpoint:** `https://ecwid-registration.keryx-solutions.workers.dev/api/register` (default)
+  - **Authentication:** Bearer token (storefront session token)
+  - **Headers:**
+    - `Content-Type: application/json`
+    - `Authorization: Bearer {sessionToken}`
+    - `Idempotency-Key: {UUID}`
+  - **Payload:** See "Payload Structure" in Section 2
+  - **Success Response (200):** `{ status, customerId, groupId }`
+  - **Retry Response (202):** `{ status: "processing" }` with `Retry-After` header
+  - **Error Response (4xx/5xx):** `{ error, errorMessage, details? }`
+
+### Server APIs (handled by Registration Server)
+- `GET /api/v3/{storeId}/customers/{customerId}` — Verify customer identity
+- `PUT /api/v3/{storeId}/customers/{customerId}` — Update profile and assign group
+- `GET /api/v3/{storeId}/store_extrafields/customers` — Resolve extra field keys
+- `PUT /api/v3/{storeId}/customers/{customerId}` — Persist extra field values
+
+**Full server API specification:** [docs/ECWID-REGISTRATION-API.md](./ECWID-REGISTRATION-API.md)
 
 ---
 
 ## 5. Constraints
 
-- **No Admin Tokens on Storefront:** All operations must use storefront-scoped APIs
-- **Group Assignment:** Must be handled server-side; client cannot directly assign customer groups
-- **Session Cookie Required:** `/customer/update` endpoint requires authenticated session
+### Client-Side Constraints
+- **No Admin Tokens:** Client never handles Admin API tokens (security)
+- **Session Token Required:** Must have valid storefront session to submit
 - **SPA Navigation:** Must handle Ecwid's SPA page transitions via MutationObserver
 - **Country List:** Currently restricted to US territories (business constraint)
+- **Browser Requirements:** `crypto.randomUUID()` preferred for idempotency keys (fallback provided)
+
+### Server-Side Dependencies
+- **External Server Required:** Must have Registration Server running and accessible
+- **CORS Configuration:** Server must allow storefront origin in CORS policy
+- **Network Reliability:** Client retries on 202 Accepted; server must be idempotent
+- **Admin Credentials:** Server must have valid Ecwid Admin API tokens with required scopes:
+  - `read_customers`
+  - `update_customers`
+  - `read_customer_groups`
+  - `read_store_extrafields` (if using extra fields)
+
+### Security Constraints
+- **Session Token Validation:** Server must validate token and extract customer ID
+- **Identity Verification:** Server must ensure token customer ID matches profile being updated
+- **HTTPS Only:** All client-server communication must use HTTPS
+- **Rate Limiting:** Server should implement rate limiting per customer/IP
 
 ---
 
 ## 6. Acceptance Criteria (current implementation)
 
+### Client-Side Behavior
 - ✅ Form injects on `/products/account/register` route
 - ✅ Email field is prefilled and read-only
 - ✅ Name, phone, company, postal code, country are prefilled from customer data
 - ✅ Required field validation prevents submission when empty
-- ✅ Submit updates `name`, `taxId`, `acceptMarketing`, and `contacts.PHONE`
 - ✅ Form persists during SPA redraws via MutationObserver
 - ✅ Form removed when navigating away from registration route
 - ✅ Telemetry events fire: `wholesale_registration_view`, `wholesale_registration_submit`, `wholesale_registration_success`, `wholesale_registration_failure`
+
+### Submission Flow
+- ✅ Client retrieves storefront session token
+- ✅ Client POSTs to Registration Server with Bearer token and Idempotency-Key
+- ✅ Client handles 202 Accepted responses with retry
+- ✅ Client displays server error messages to user
+- ✅ Client refreshes Ecwid config after successful submission
 - ⚠️ Redirect to `/products` disabled (debugging mode)
-- ❌ Extra fields not yet persisted (target behavior)
+
+### Server-Side Behavior (handled by Registration Server)
+- ✅ Server validates session token and extracts customer ID
+- ✅ Server updates customer profile via Admin REST:
+  - `name`, `billingPerson.*`, `acceptMarketing`, `taxId`, `contacts`
+- ✅ Server persists customer extra fields:
+  - Tax ID, Cell Phone, How did you hear about us?
+- ✅ Server assigns customer to wholesale group
+- ✅ Server returns success response with `customerId` and `groupId`
 
 ---
 
 ## 7. Acceptance Criteria (target implementation)
 
-- ✅ All current criteria (above)
-- ⬜ `billingPerson` fields persisted on submit
-- ⬜ Customer extra fields (Tax ID, Cell Phone, referral source) persisted
-- ⬜ Success redirect to `/products` executed
+### Redirect Flow
+- ⬜ Success redirect to `/products` enabled in production
 - ⬜ Success banner displayed after redirect
-- ⬜ Group assignment triggered server-side and reflected in session within 5 seconds
+- ⬜ Banner auto-dismisses after 8 seconds
+
+### Enhanced Error Handling
+- ⬜ Field-level error display from server validation
+- ⬜ Network failure retry with exponential backoff
+- ⬜ Graceful degradation when server unavailable
+
+### Additional Features
+- ⬜ Country list expanded to full ISO-3166-1 alpha-2
+- ⬜ Tax ID format validation (client-side)
+- ⬜ Real-time field validation as user types
 
 ---
 
@@ -231,5 +311,6 @@ When splitting into standalone app:
 
 ---
 
-**Last Updated:** 2025-11-11
-**Implementation Status:** ✅ Phase 1 Complete (core form and basic persistence) | 🔄 Phase 2 Pending (extra fields, redirect, billing address)
+**Last Updated:** 2025-11-11 (Migration to external Registration Server)
+**Implementation Status:** ✅ Complete — Client submits to external server; server handles all persistence and group assignment
+**Architecture:** External Registration Server (replaced storefront-only submission)
