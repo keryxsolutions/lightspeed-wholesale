@@ -18,16 +18,22 @@ This document serves as an index to the individual Product Requirement Documents
 ### 1. Wholesale Registration
 **File:** [registration.prd](./registration.prd)
 
-**Summary:** Account-based wholesale registration flow integrated into Ecwid's `/products/account/register` page. Prefills customer data, saves core profile fields and extra fields via Storefront API, with server-side group assignment via Automations/Webhooks.
+**Summary:** Account-based wholesale registration flow integrated into Ecwid's `/products/account/register` page. Prefills customer data from storefront, submits to external **Registration Server** using session token authentication. Server handles all Admin REST operations (profile updates, extra fields persistence, immediate group assignment).
 
-**Current Status:** ✅ Phase 1 Complete (core form and basic persistence) | 🔄 Phase 2 Pending (extra fields, redirect, billing address)
+**Current Status:** ✅ Complete — External server architecture with full persistence
+
+**Architecture:** Client-Server
+- **Client:** Form rendering, validation, session token auth
+- **Server:** Admin REST operations, group assignment, idempotency
 
 **Key Features:**
 - Custom registration form injection on account pages
 - Prefill from `Ecwid.Customer.get()`
-- Submit via `/storefront/api/v1/{storeId}/customer/update`
-- Extra field definitions from `Ecwid.getAppPublicConfig(clientId)["extraFields"]`
-- Server-side group assignment
+- Submit to external Registration Server at `REG_SERVER_URL/api/register`
+- Session token authentication (Bearer token)
+- Idempotency support with `Idempotency-Key` header
+- Server handles: profile updates, extra fields, group assignment
+- Extra field UI metadata from `Ecwid.getAppPublicConfig(clientId)["extraFields"]`
 - Telemetry tracking
 
 ---
@@ -85,23 +91,32 @@ This document serves as an index to the individual Product Requirement Documents
 The following utilities are used across multiple features and should be maintained as shared dependencies:
 
 - **`waitForEcwidAndTokens()`** — Ensures Ecwid API readiness and returns store ID + public token
-- **`ecwidFetchJSON(path, options)`** — Makes authenticated REST API calls
+- **`getStorefrontSessionToken()`** — Retrieves session token for external API authentication (Registration feature)
 - **`trackWholesaleEvent(name, props)`** — Telemetry tracking with deduplication
 - **`isAccountRegisterPath()`** — Detects registration route
-- **`ensureSingletonNode(id, createEl)`** — Idempotent DOM node management
 - **`removeNodeById(id)`** — Safe node removal
 
 ### Configuration
 - **App Client ID:** `custom-app-121843055-1`
 - **Wholesale Group Name:** `window.WHOLESALE_GROUP_NAME` (default: `"Wholesaler"`)
+- **Registration Server URL:** `window.WHOLESALE_REG_SERVER_URL` (default: `"https://ecwid-registration.keryx-solutions.workers.dev"`)
 - **Feature Flags:** `WHOLESALE_FLAGS.ENABLE_WHOLESALE_REGISTRATION`, `WHOLESALE_FLAGS.ENABLE_WHOLESALE_BANNER`
 
 ### Required Ecwid Scopes
-- `read_catalog` — For fetching categories and products
-- `read_customers` — For customer profile access
-- `update_customers` — For registration form submission
-- `read_customer_groups` — For wholesale membership detection
+
+**Client-Side (Storefront App):**
+- `read_catalog` — For fetching categories and products (banners, tags)
+- `read_customers` — For customer profile access and prefill (registration, gating)
+- `read_customer_groups` — For wholesale membership detection (gating)
 - `read_store_profile` — For store configuration
+
+**Server-Side (Registration Server):**
+- `read_customers` — For customer identity verification
+- `update_customers` — For profile updates and group assignment
+- `read_customer_groups` — For resolving wholesale group ID
+- `read_store_extrafields` — For extra field key resolution (if using extra fields)
+
+**Note:** Client no longer requires `update_customers` scope — all updates handled by Registration Server via Admin REST API.
 
 ---
 
@@ -271,6 +286,19 @@ docs/
 ---
 
 ## Version History
+
+### Version 2.1 (2025-11-11)
+- **Migration to External Registration Server**
+- Replaced storefront `/customer/update` submission with external server architecture
+- Client now authenticates with session token (Bearer)
+- Server handles all Admin REST operations:
+  - Customer profile updates (`billingPerson`, `acceptMarketing`, `taxId`, `contacts`)
+  - Customer extra fields persistence (Tax ID, Cell Phone, referral source)
+  - Immediate customer group assignment
+- Added idempotency support with `Idempotency-Key` header
+- Removed client-side checkout discovery fallback (App Storage only for UI metadata)
+- Updated all PRDs and documentation to reflect new architecture
+- Benefits: Unified persistence, immediate group assignment, better security, simplified client
 
 ### Version 2.0 (2025-11-11)
 - Split master PRD into four focused feature PRDs

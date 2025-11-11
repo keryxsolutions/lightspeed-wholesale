@@ -77,7 +77,9 @@ The application is organized into four main initialization functions called from
    - Injects registration form on `/products/account/register` page
    - Hijacks `.ec-cart__body-inner` container to render custom form
    - Prefills from `Ecwid.Customer.get()` data
-   - Submits via `POST https://app.ecwid.com/storefront/api/v1/{storeId}/customer/update`
+   - **Submits to external Registration Server** via `POST {REG_SERVER_URL}/api/register`
+   - Authenticates with storefront session token (Bearer)
+   - Server handles all Admin REST operations (profile updates, extra fields, group assignment)
    - Uses MutationObserver to maintain form on SPA redraws
    - Cleans up when leaving registration page
 
@@ -85,7 +87,13 @@ The application is organized into four main initialization functions called from
 
 **Token Resolution** (lines 78-103):
 - `waitForEcwidAndTokens()` - Polls until Ecwid API is ready, returns `storeId` and `publicToken`
-- Used by all modules that call Ecwid REST endpoints
+- Used by all modules that call Ecwid REST endpoints (category banner, product tags)
+
+**Session Token** (lines 106-121):
+- `getStorefrontSessionToken()` - Retrieves storefront session token for external API authentication
+- Primary: `Ecwid.Storefront.getSessionToken()` (preferred)
+- Fallback: Internal `storefrontApiClient.sessionStorageOptions.sessionToken._value`
+- Used by registration module to authenticate with Registration Server
 
 **API Helpers** (lines 115-135):
 - `ecwidFetchJSON(path, options)` - Makes authenticated REST calls with public token
@@ -101,24 +109,30 @@ The application is organized into four main initialization functions called from
 
 ### Customer Extra Fields Architecture
 
-The registration form dynamically loads Customer Extra Field definitions:
+**Client Responsibility:** UI metadata only
+**Server Responsibility:** Field mapping, key resolution, persistence
 
-1. **Primary Source**: `Ecwid.getAppPublicConfig(clientId)["extraFields"]` (preferred, documented in [registration.prd](docs/registration.prd))
-   - App-controlled configuration published via App Storage or app settings
-   - Contains field metadata: key, title, type, textPlaceholder, required, options
+The registration form loads extra field definitions **only for UI purposes** (labels, placeholders, dropdown options):
 
-2. **Fallback Discovery** (lines 910-928):
-   - Use `ec.order.extraFields` or `ec.checkout.extraFields` from storefront state
-   - If unavailable, call `POST /storefront/api/v1/{storeId}/customer/update` with minimal payload
-   - Parse `checkoutSettings.extraFields` from response
-   - Cache normalized definitions for session
+1. **Source**: `Ecwid.getAppPublicConfig(clientId)["extraFields"]`
+   - App-controlled configuration published via App Storage
+   - Contains **UI metadata only**: title, type, textPlaceholder, required, options
+   - Used to render form fields with correct labels and placeholders
 
-3. **Field Normalization** (lines 891-909):
-   - `normalizeExtraDefs(map)` - Maps by key or title lookup
+2. **What Client Does:**
+   - Renders form fields with labels/placeholders from App Storage
+   - Validates required fields before submission
+   - Sends field values to Registration Server
+
+3. **What Server Does** (via Registration Server):
+   - Resolves field keys via `GET /api/v3/{storeId}/store_extrafields/customers`
+   - Maps submitted values to correct extra field keys
+   - Persists values via `PUT /api/v3/{storeId}/customers/{customerId}` (Admin REST)
    - Expected fields: "Tax ID", "How did you hear about us?", "Cell Phone"
-   - Returns consistent structure for form rendering
 
-**Note:** Current code uses `getAppPublicConfig(clientId)["extraFields"]` as primary source. See [registration.prd](docs/registration.prd) Section 4 for the canonical storage contract.
+**Removed:** Checkout-based discovery fallback (no longer needed; server handles field mapping)
+
+See [registration.prd](docs/registration.prd) Section 4 for full API contract between client and server.
 
 ### SPA Navigation Handling
 

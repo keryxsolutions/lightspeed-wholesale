@@ -94,38 +94,102 @@ Provide to support:
 
 ## Wholesale Registration Flow
 
+### Architecture: External Registration Server
+
+Registration uses a **client-server architecture** where the storefront app handles UI and the external Registration Server handles all Ecwid Admin REST operations.
+
+**Client (Storefront App):**
+- Form rendering and validation
+- Prefill from `Ecwid.Customer.get()`
+- Session token authentication
+- Submit to Registration Server
+
+**Server (External):**
+- Customer profile updates via Admin REST
+- Extra fields persistence
+- Immediate customer group assignment
+- Idempotent operations
+
 ### Features
 - Banner prompts logged-in, non-wholesale users to register
 - Custom form injects on `/products/account/register` (hijacks account page container)
 - Prefills from `Ecwid.Customer.get()`: name, phone, company, postal code, country, email (read-only)
-- Submits via Storefront API: `POST /storefront/api/v1/{storeId}/customer/update`
-- Group assignment handled server-side by Ecwid Automations/Webhooks
+- **Submits to:** `POST {REG_SERVER_URL}/api/register` with session token authentication
+- **Server handles:** Profile updates, extra fields, group assignment
 - After success, refreshes storefront config to update price visibility
 
-### Current Implementation Status
-✅ **Phase 1 Complete:**
-- Form injection and prefill
-- Basic field persistence (name, taxId, acceptMarketing, contacts)
-- Form validation and error handling
-- Telemetry tracking
+### Implementation Status
+✅ **Complete** — External server architecture with full persistence
 
-🔄 **Phase 2 Pending:**
-- billingPerson field persistence (currently commented out)
-- Customer extra fields persistence (Tax ID, Cell Phone, referral source)
-- Success redirect to `/products` (disabled for debugging)
-- Success banner display
+**Client-Side:**
+- ✅ Form injection, prefill, validation
+- ✅ Session token authentication
+- ✅ POST to Registration Server with idempotency
+- ✅ 202 retry handling with `Retry-After`
+- ✅ Server error message display
+- ✅ Telemetry tracking
+- ⚠️ Redirect to `/products` (disabled for debugging)
+
+**Server-Side:**
+- ✅ Session token validation
+- ✅ Customer profile updates (`billingPerson`, `acceptMarketing`, `taxId`, `contacts`)
+- ✅ Extra fields persistence (Tax ID, Cell Phone, referral source)
+- ✅ Customer group assignment (wholesale group)
+- ✅ Idempotent operations with `Idempotency-Key`
 
 ### Configuration
 - `window.WHOLESALE_GROUP_NAME` — Wholesale customer group name (default: `"Wholesaler"`)
+- `window.WHOLESALE_REG_SERVER_URL` — Registration Server URL (default: `"https://ecwid-registration.keryx-solutions.workers.dev"`)
 - Feature flags in `WHOLESALE_FLAGS`:
   - `ENABLE_WHOLESALE_REGISTRATION` — Enable/disable registration feature
   - `ENABLE_WHOLESALE_BANNER` — Show/hide registration prompt banner
+
+### API Contract
+**Client → Server:**
+```http
+POST {REG_SERVER_URL}/api/register
+Authorization: Bearer {sessionToken}
+Idempotency-Key: {UUID}
+Content-Type: application/json
+
+{
+  "storeId": "121843055",
+  "lang": "en",
+  "values": {
+    "name": "...",
+    "companyName": "...",
+    "postalCode": "...",
+    "countryCode": "US",
+    "phone": "...",
+    "cellPhone": "...",
+    "taxId": "...",
+    "hear": "...",
+    "acceptMarketing": true
+  }
+}
+```
+
+**Server → Client (Success):**
+```json
+{
+  "status": "success",
+  "customerId": 123456789,
+  "groupId": 25614001
+}
+```
 
 ### Telemetry
 Console-backed events (see [registration.prd](docs/registration.prd) for details):
 - `wholesale_banner_shown`, `wholesale_banner_click`
 - `wholesale_registration_view`, `wholesale_registration_submit`
 - `wholesale_registration_success`, `wholesale_registration_failure`
+
+### Server Requirements
+- **Registration Server** must be deployed and accessible at `REG_SERVER_URL`
+- Server must have Ecwid Admin API tokens with required scopes:
+  - `read_customers`, `update_customers`, `read_customer_groups`, `read_store_extrafields`
+- CORS must allow storefront origin
+- See [docs/ECWID-REGISTRATION-API.md](docs/ECWID-REGISTRATION-API.md) for full server specification
 
 ## Deployment Checklist
 - [ ] Host/update `app.js` on GitHub Pages
