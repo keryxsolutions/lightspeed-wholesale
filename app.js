@@ -12,6 +12,11 @@ const WHOLESALE_FLAGS = {
   ENABLE_WHOLESALE_BANNER: true,
 };
 
+// External Registration Server base URL (override via window.WHOLESALE_REG_SERVER_URL if needed)
+const REG_SERVER_URL =
+  window.WHOLESALE_REG_SERVER_URL ||
+  "https://ecwid-registration.keryx-solutions.workers.dev";
+
 // Route helpers (supports pathname and hash)
 function isAccountRegisterPath() {
   const p = window.location.pathname || "";
@@ -91,6 +96,28 @@ function waitForEcwidAndTokens(maxAttempts = 60, interval = 250) {
       }
     })();
   });
+}
+
+/**
+ * Get storefront session token for authenticated API calls to external services
+ * @returns {Promise<string>} Session token
+ * @throws {Error} If session token is unavailable
+ */
+async function getStorefrontSessionToken() {
+  // Preferred: documented API if available
+  if (Ecwid?.Storefront?.getSessionToken) {
+    try {
+      return await Ecwid.Storefront.getSessionToken();
+    } catch (_) {}
+  }
+  // Fallback: internal path observed in platform widgets
+  try {
+    const v =
+      Ecwid?.ecommerceInstance?.widgets?.options?.storefrontApiClient
+        ?.sessionStorageOptions?.sessionToken?._value;
+    if (v) return v;
+  } catch (_) {}
+  throw new Error("Session token unavailable");
 }
 
 /*****************************************************************************/
@@ -941,138 +968,84 @@ function loadCustomerExtraFieldDefsFromStorage() {
 /**
  * Load Customer Extra Field defs with preference for App Storage; fallback to checkout-based discovery.
  */
+/**
+ * Load Customer Extra Field definitions from App Storage only.
+ * Server handles field mapping and persistence; client only needs labels/options for UI.
+ * @returns {Promise<{tax, hear, cell}>} Field definitions or nulls
+ */
 async function loadCustomerExtraDefsSafe() {
   if (EXTRA_FIELD_DEFS_CACHE) return EXTRA_FIELD_DEFS_CACHE;
 
-  // 1) Try App Storage (public/extrafields)
+  // Load from App Storage (public/extrafields)
   const fromStorage = loadCustomerExtraFieldDefsFromStorage();
-  if (
-    fromStorage &&
-    (fromStorage.tax || fromStorage.hear || fromStorage.cell)
-  ) {
-    EXTRA_FIELD_DEFS_CACHE = fromStorage;
-    return EXTRA_FIELD_DEFS_CACHE;
-  }
-
-  // 2) Fallback to existing checkout-based discovery
-  const fromCheckout = await loadCheckoutExtraFieldDefsSafe();
-  EXTRA_FIELD_DEFS_CACHE = fromCheckout;
+  EXTRA_FIELD_DEFS_CACHE = fromStorage || { tax: null, hear: null, cell: null };
   return EXTRA_FIELD_DEFS_CACHE;
 }
-// ... existing code ...
-
 /**
- * Due to CORS restrictions we need to use
- * Ecwid.ecommerceInstance.widgets.options.storefrontApiClient.makeRequest function
- * @param {*} body
+ * Build registration payload for external server submission
+ * @param {Object} values - Form values from getVals()
+ * @returns {Object} Payload for POST /api/register
  */
-async function fetchStorefrontCheckout(body) {
-  const { storeId } = await waitForEcwidAndTokens();
-  const client = Ecwid.ecommerceInstance.widgets.options.storefrontApiClient;
-  const res = await client.makeRequest("/checkout", body);
-  return res.data;
-}
-/**
- * Due to CORS restrictions we need to use
- * Ecwid.ecommerceInstance.widgets.options.storefrontApiClient.makeRequest function
- * @param {*} body
- * @returns {Promise<Object>} Raw API response data (supports both "authorized/customer" and "checkout" responses)
- */
-async function fetchStorefrontCustomerUpdate(body) {
-  const client = Ecwid.ecommerceInstance.widgets.options.storefrontApiClient;
-  const res = await client.makeRequest("/customer/update", body);
-  return res.data; // raw passthrough: supports both "authorized/customer" and "checkout" responses
-}
-function normalizeExtraDefs(map) {
-  const norm = (o) =>
-    !o
-      ? null
-      : {
-          key: o.key || null,
-          title: o.title || "",
-          placeholder: o.textPlaceholder || "",
-          type: (o.type || "text").toLowerCase(),
-          required: !!o.required,
-          options: Array.isArray(o.options)
-            ? o.options.map((x) => ({
-                title: x.title,
-                surcharge: x.surcharge ?? 0,
-              }))
-            : null,
-          // passthrough metadata needed for checkout payload
-          checkoutDisplaySection: o.checkoutDisplaySection,
-          orderDetailsDisplaySection: o.orderDetailsDisplaySection,
-          available: typeof o.available === "boolean" ? o.available : undefined,
-          saveToCustomerProfile:
-            typeof o.saveToCustomerProfile === "boolean"
-              ? o.saveToCustomerProfile
-              : undefined,
-          showInInvoice:
-            typeof o.showInInvoice === "boolean" ? o.showInInvoice : undefined,
-          showInNotifications:
-            typeof o.showInNotifications === "boolean"
-              ? o.showInNotifications
-              : undefined,
-          cpField: typeof o.cpField === "boolean" ? o.cpField : undefined,
-          orderBy: typeof o.orderBy === "number" ? o.orderBy : undefined,
-        };
-  const byTitle = (t) => {
-    const low = t.toLowerCase();
-    for (const k in map) {
-      const v = map[k];
-      const title = (v?.title || "").toLowerCase();
-      if (title === low) return norm({ ...v, key: k });
-    }
-    return null;
+function buildRegistrationServerPayload(values) {
+  const storeId = Ecwid.getOwnerId();
+  return {
+    storeId: String(storeId),
+    lang: "en",
+    values: {
+      name: values.name,
+      companyName: values.companyName,
+      postalCode: values.postalCode,
+      countryCode: values.countryCode,
+      phone: values.phone,
+      cellPhone: values.cellPhone || "",
+      taxId: values.taxId || "",
+      hear: values.hear || "",
+      acceptMarketing: !!values.acceptMarketing,
+    },
   };
-  const tax = byTitle("Tax ID");
-  const hear = byTitle("How did you hear about us?");
-  const cell = byTitle("Cell Phone");
-  return { tax, hear, cell };
 }
-async function loadCheckoutExtraFieldDefsSafe() {
-  if (EXTRA_FIELD_DEFS_CACHE) return EXTRA_FIELD_DEFS_CACHE;
-  const ecDefs = getCheckoutExtraFieldDefsFromEc();
-  if (ecDefs) {
-    EXTRA_FIELD_DEFS_CACHE = normalizeExtraDefs(ecDefs);
-    return EXTRA_FIELD_DEFS_CACHE;
+
+/**
+ * POST registration to external server with idempotency and retry handling
+ * @param {Object} payload - Registration payload from buildRegistrationServerPayload
+ * @returns {Promise<{status: string, customerId: number, groupId?: number}>}
+ * @throws {Error} If registration fails
+ */
+async function postRegistrationToServer(payload) {
+  const token = await getStorefrontSessionToken();
+  const key =
+    (window.crypto && crypto.randomUUID && crypto.randomUUID()) ||
+    "reg-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+
+  const res = await fetch(REG_SERVER_URL + "/api/register", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer " + token,
+      "Idempotency-Key": key,
+    },
+    body: JSON.stringify(payload),
+    credentials: "omit", // not needed for our server
+  });
+
+  // Handle 202 Accepted with retry
+  if (res.status === 202) {
+    const retryAfter = Number(res.headers.get("Retry-After") || 2);
+    await new Promise((r) => setTimeout(r, retryAfter * 1000));
+    return postRegistrationToServer(payload); // retry with same key
   }
-  try {
-    const resp = await fetchStorefrontCheckout({ lang: "en" });
-    const defs = resp?.checkoutSettings?.extraFields || {};
-    EXTRA_FIELD_DEFS_CACHE = normalizeExtraDefs(defs);
-  } catch {
-    EXTRA_FIELD_DEFS_CACHE = {
-      tax: {
-        key: null,
-        title: "Tax ID",
-        placeholder: "Enter your tax identification number",
-        type: "text",
-        required: true,
-      },
-      hear: {
-        key: null,
-        title: "How did you hear about us?",
-        placeholder: "",
-        type: "select",
-        options: [
-          { value: "Google", label: "Google" },
-          { value: "Wholesale Central", label: "Wholesale Central" },
-          { value: "Referral", label: "Referral" },
-          { value: "Retailing Insight", label: "Retailing Insight" },
-          { value: "Other", label: "Other" },
-        ],
-      },
-      cell: {
-        key: null,
-        title: "Cell Phone",
-        placeholder: "",
-        type: "text",
-        required: false,
-      },
-    };
+
+  // Handle errors
+  if (!res.ok) {
+    let err;
+    try {
+      err = await res.json();
+    } catch (_) {}
+    const msg = err?.errorMessage || "HTTP " + res.status;
+    throw new Error(msg);
   }
-  return EXTRA_FIELD_DEFS_CACHE;
+
+  return res.json(); // { status, customerId, groupId }
 }
 
 function formRow(inner) {
@@ -1607,65 +1580,6 @@ function toCheckoutExtraFieldDef(def, { forceSectionsFor } = {}) {
   };
 }
 
-function buildStorefrontUpdatePayload(values, defs) {
-  const updatedCustomer = {
-    name: values.name,
-    acceptMarketing: !!values.acceptMarketing,
-    // billingPerson changes do not register
-    /*
-    billingPerson: {
-      name: values.name || "",
-      companyName: values.companyName || "",
-      street: values.street || "",
-      city: values.city || "",
-      countryCode: values.countryCode || "US",
-      postalCode: values.postalCode || "",
-      stateOrProvinceCode: values.stateOrProvinceCode || "",
-      phone: values.phone || "",
-    },
-    */
-    // shippingAddresses changes do not register
-    /*
-    shippingAddresses: [
-      {
-        id: 0,
-        person: {
-          name: values.name || "",
-          companyName: values.companyName || "",
-          street: values.street || "",
-          city: values.city || "",
-          countryCode: values.countryCode || "US",
-          postalCode: values.postalCode || "",
-          stateOrProvinceCode: values.stateOrProvinceCode || "",
-          phone: values.phone || "",
-        },
-      },
-    ],
-    */
-    isAcceptedMarketing: !!values.acceptMarketing,
-    // taxId cannot have certain characters, or is length limited
-    taxId: values.taxId || "",
-    // customerGroupId changes do not register
-    customerGroupId: "25614001",
-    // contacts changes do not register
-    contacts: [
-      {
-        type: "PHONE",
-        default: true,
-        contact: values.phone || "",
-        note: "a little note for you",
-      },
-    ],
-  };
-
-  const payload = {
-    updatedCustomer,
-    lang: "en",
-  };
-
-  return payload;
-}
-
 function attachAccountRegisterHandlers(root, defs) {
   const getVals = () => ({
     name: document.getElementById("ec-name")?.value.trim() || "",
@@ -1756,20 +1670,15 @@ function attachAccountRegisterHandlers(root, defs) {
     msg.className = "form__msg";
 
     try {
-      const body = buildStorefrontUpdatePayload(v, defs);
-      const res = await fetchStorefrontCustomerUpdate(body);
-      /*
-Response can be either:
-1. Authorized customer object: { billingPerson, email, id, name, ... }
-2. Checkout response: { checkout, checkoutSettings, ... }
-The exact shape depends on the session state and request payload.
-Success is determined by the absence of errors (caught in catch block).
-*/
+      const payload = buildRegistrationServerPayload(v);
+      const res = await postRegistrationToServer(payload);
+      // Server returns: { status, customerId, groupId }
+
       trackWholesaleEvent("wholesale_registration_success", {});
       msg.textContent = "Registration submitted successfully!";
       msg.className = "form__msg";
 
-      // Refresh Ecwid config
+      // Refresh Ecwid config to reflect updated customer group
       if (typeof Ecwid.refreshConfig === "function") {
         await new Promise((resolve) => setTimeout(resolve, 500));
         Ecwid.refreshConfig();
@@ -1790,7 +1699,8 @@ Success is determined by the absence of errors (caught in catch block).
       trackWholesaleEvent("wholesale_registration_failure", {
         error: err.message,
       });
-      msg.textContent = "Registration failed. Please try again.";
+      msg.textContent =
+        "Registration failed. " + (err?.message || "Please try again.");
       msg.className = "form__msg form__msg--error";
     }
   });
