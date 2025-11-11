@@ -1,6 +1,39 @@
-# Tasks: Storefront-Only Wholesale Registration (aligns with PRD v1.1)
+# Tasks: Wholesale Registration Flow
 
-## Implementation
+## Migration to External Registration Server (2025-11-11) ✅
+
+- [x] **Code Changes (app.js)**
+  - [x] Add `REG_SERVER_URL` configuration with window override support
+  - [x] Add `getStorefrontSessionToken()` function with fallback
+  - [x] Add `buildRegistrationServerPayload()` function
+  - [x] Add `postRegistrationToServer()` with idempotency and retry
+  - [x] Update `attachAccountRegisterHandlers()` to call external server
+  - [x] Simplify `loadCustomerExtraDefsSafe()` to App Storage only
+  - [x] Remove unused storefront submission helpers:
+    - [x] `fetchStorefrontCheckout()`
+    - [x] `fetchStorefrontCustomerUpdate()`
+    - [x] `normalizeExtraDefs()`
+    - [x] `loadCheckoutExtraFieldDefsSafe()`
+    - [x] `buildStorefrontUpdatePayload()`
+
+- [x] **Documentation Updates**
+  - [x] Update `docs/registration.prd` with external server architecture
+  - [x] Update `docs/wholesale-registration-master.prd` with version 2.1
+  - [x] Update `README.md` with API contract and server requirements
+  - [x] Update `CLAUDE.md` with new architecture notes
+  - [x] Update `IMPLEMENTATION_SUMMARY.md` with migration section
+  - [x] Update `tasks.md` with migration checklist (this file)
+
+- [x] **Commits**
+  - [x] Code migration commit (`98cd68b`)
+  - [x] Main documentation commit (`0472108`)
+  - [x] Remaining documentation commit (pending)
+
+---
+
+## Original Implementation (Storefront-Only, PRD v1.1) ✅
+
+### Implementation
 
 - [x] Banner
   - [x] Show banner only for logged-in, non-wholesale users.
