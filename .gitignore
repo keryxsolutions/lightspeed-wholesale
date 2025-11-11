@@ -25,5 +25,8 @@
 # old files
 /old/
 
+# debugging
+ecwid-scripts-min/
+
 # RepoPrompt
 .repoprompt/

@@ -1,12 +1,78 @@
 # Implementation Summary: Wholesale Registration Flow
 
-**Date**: 2025-11-05
+**Latest Update**: 2025-11-11 - **Migration to External Registration Server**
+**Original Implementation**: 2025-11-05
 **Branch**: `claude/test-wholesale-registration-flow-011CUoqHyxBnuG5RGjFK2G5M`
-**Status**: ✅ Complete - Ready for Testing
+**Status**: ✅ Complete - External Server Architecture
 
-## Overview
+---
 
-Successfully implemented a complete storefront-only wholesale registration flow for Lightspeed (Ecwid) that meets all PRD v1.1 requirements. The implementation uses only the Ecwid Storefront JS API and public endpoints, with no custom backend required.
+## 🚀 Migration to External Registration Server (2025-11-11)
+
+### Architecture Change
+
+**Before (v1.1):** Storefront-only submission
+- Client submits to `POST /storefront/api/v1/{storeId}/customer/update`
+- Limited persistence (name, taxId, acceptMarketing, contacts only)
+- Group assignment via Automations/Webhooks (delayed)
+- Checkout-based extra field discovery
+
+**After (v2.1):** External server with full persistence
+- Client submits to `POST {REG_SERVER_URL}/api/register` with session token (Bearer)
+- **Full persistence:** Profile, billingPerson, extra fields, contacts
+- **Immediate group assignment:** Server assigns wholesale group via Admin REST
+- App Storage only for extra field UI metadata
+
+### Changes Made
+
+**Client (app.js):**
+- ✅ Added `REG_SERVER_URL` configuration
+- ✅ Added `getStorefrontSessionToken()` for session token retrieval
+- ✅ Added `buildRegistrationServerPayload()` to format server payload
+- ✅ Added `postRegistrationToServer()` with idempotency and retry handling
+- ✅ Updated `attachAccountRegisterHandlers()` to call external server
+- ✅ Simplified `loadCustomerExtraDefsSafe()` to App Storage only
+- ❌ Removed storefront-specific helpers:
+  - `fetchStorefrontCheckout()`
+  - `fetchStorefrontCustomerUpdate()`
+  - `normalizeExtraDefs()`
+  - `loadCheckoutExtraFieldDefsSafe()`
+  - `buildStorefrontUpdatePayload()`
+
+**Documentation:**
+- ✅ Updated all PRDs (registration.prd, wholesale-registration-master.prd)
+- ✅ Updated README.md with API contract and server requirements
+- ✅ Updated CLAUDE.md with new architecture and removed references to checkout discovery
+
+### Benefits
+
+1. **Unified Persistence**: All fields saved immediately via Admin REST (no partial updates)
+2. **Immediate Group Assignment**: No webhook delay; customer instantly becomes wholesale member
+3. **Better Security**: No Admin tokens in client; session token only
+4. **Simplified Client**: Removed 189 lines of storefront-specific code, added 99 lines of cleaner server-based code
+5. **Idempotency**: Safe retries with `Idempotency-Key` header
+6. **Clear Separation**: Client handles UI, server handles all Ecwid Admin operations
+
+### Server Requirements
+
+**Deployment:**
+- Registration Server running at `REG_SERVER_URL` (default: `https://ecwid-registration.keryx-solutions.workers.dev`)
+- CORS configured to allow storefront origins
+
+**Configuration:**
+- Ecwid Admin API tokens with scopes: `read_customers`, `update_customers`, `read_customer_groups`, `read_store_extrafields`
+- Wholesale group ID or name configuration
+- Customer extra field key mappings
+
+**API Specification:** See [docs/ECWID-REGISTRATION-API.md](docs/ECWID-REGISTRATION-API.md)
+
+---
+
+## Original Implementation (2025-11-05)
+
+*Historical context: Initial storefront-only implementation*
+
+Successfully implemented a complete storefront-only wholesale registration flow for Lightspeed (Ecwid) that met PRD v1.1 requirements. The implementation used only the Ecwid Storefront JS API and public endpoints, with no custom backend. This approach was later superseded by the external Registration Server architecture for full persistence and immediate group assignment.
 
 ## Key Features Implemented
 
