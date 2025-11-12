@@ -1,5 +1,76 @@
 # Tasks: Wholesale Registration Flow
 
+## Public Config v2 Update (2025-11-12)
+
+### Changes Implemented
+- [x] Switch docs to App Public Config v2 shape `{ version, updatedAt, hash, extraFields[] }`
+- [x] Remove `entityTypes` filtering in client (curated upstream)
+- [x] Use `placeholder` (not `textPlaceholder`) in client UI
+- [x] Update docs/registration.prd Extra Fields section
+- [x] Update docs/wholesale-registration-master.prd (Last Updated + Config bullet)
+- [x] Update docs/ECWID-REGISTRATION-API.md to prefer `Ecwid.getAppPublicConfig(clientId)`
+- [x] Confirm app.js already aligned (no code changes required)
+
+### Remaining Tasks
+- [ ] Enable success redirect to `/products` after registration (currently commented)
+- [ ] Add E2E test covering v2 config rendering (Tax ID, Cell phone, Hear fields)
+- [x] Handle select rendering when `options` provided upstream (hear field)
+- [x] Validation: warn if `config.version !== 2` or `!Array.isArray(config.extraFields)`
+- [ ] Create docs/APP_STORAGE.md to document v2 public config contract
+- [ ] Ensure server publishes v2 public config after extrafield changes (hash-based no-op)
+- [ ] Expand country list if business requirements change (currently US/UM/VI)
+
+## Registration & Gating Enhancements (Version 2.2, 2025-11-11)
+
+### Documentation Updates
+- [x] Update `docs/registration.prd` with banner persistence, auto-redirect, customer refresh, button text
+- [x] Update `docs/wholesale-gating.prd` with cart/favorites hiding
+- [x] Update `docs/wholesale-registration-master.prd` with version 2.2
+- [x] Update `tasks.md` with enhancement checklist (this file)
+- [ ] Update `IMPLEMENTATION_SUMMARY.md` with enhancement section
+
+### Code Implementation (app.js)
+- [ ] **Banner Persistence Utilities**
+  - [ ] Add `setRegistrationBanner(type, msg, durationMs=5000)` function
+  - [ ] Add `restoreRegistrationBanner()` function
+  - [ ] Add `renderTopBanner(type, msg)` function for display
+  - [ ] Hook banner restoration into `OnAPILoaded` and `OnPageLoaded`
+
+- [ ] **Registration Form Enhancements**
+  - [ ] Change submit button text from "Continue" to "Register"
+  - [ ] Update success handler to use `setRegistrationBanner()` instead of old banner function
+  - [ ] Add `Ecwid.Customer.get()` refresh after successful registration
+  - [ ] Update error handler to use `setRegistrationBanner()` for errors
+  - [ ] Remove or repurpose old `showRegistrationSuccessBanner()` function
+
+- [ ] **Auto-Redirect Implementation**
+  - [ ] Add `maybeRedirectToRegistration(customer)` function
+  - [ ] Check `sessionStorage.getItem("wr-autoredirect")` flag
+  - [ ] Redirect non-wholesale users to `/products/account/register` once per session
+  - [ ] Set `sessionStorage.setItem("wr-autoredirect", "1")` after redirect
+  - [ ] Skip redirect if already on registration page
+
+- [ ] **Additional Gating (Cart/Favorites Hiding)**
+  - [ ] Add `applyNonWholesaleUIHides(isWholesale, isLoggedIn)` function
+  - [ ] Hide cart links: `document.querySelectorAll('a[href*="/products/cart"]')`
+  - [ ] Mark hidden cart links with `data-wr-hidden-cart-link="1"`
+  - [ ] Hide account steps: `.ec-cart-step--bag`, `.ec-cart-step--favorites`
+  - [ ] Mark hidden steps with `data-wr-hidden-account-step="1"`
+  - [ ] Call from `initializeWholesalePriceVisibility()` on every page load
+  - [ ] Restore visibility for wholesale users (remove inline styles)
+
+### Testing
+- [ ] Test banner persistence across navigation (5s expiration)
+- [ ] Test auto-redirect for non-wholesale users (once per session)
+- [ ] Test cart links hidden for non-wholesale, visible for wholesale
+- [ ] Test account bag/favorites steps hidden for non-wholesale
+- [ ] Test registration button displays "Register"
+- [ ] Test customer data refresh after successful registration
+- [ ] Verify no console errors during all flows
+- [ ] Test banner auto-dismiss after 5 seconds
+
+---
+
 ## Migration to External Registration Server (2025-11-11) ✅
 
 - [x] **Code Changes (app.js)**

@@ -40,10 +40,21 @@ This feature enforces a "wholesale-only" storefront experience where pricing is 
   ```
 - Call `Ecwid.refreshConfig()` to apply changes
 
-**When showing prices:**
+**Additional UI Hiding (for non-wholesale):**
+- Hide cart links: All `<a href="/products/cart">` anchors
+  - Applied via inline `display: none` style
+  - Marked with `data-wr-hidden-cart-link="1"` attribute
+- Hide account bag/favorites steps on `/products/account/*` pages:
+  - Selectors: `.ec-cart-step--bag`, `.ec-cart-step--favorites`
+  - Applied via inline `display: none` style
+  - Marked with `data-wr-hidden-account-step="1"` attribute
+- Re-applied on every page load to handle SPA navigation
+
+**When showing prices (wholesale members):**
 - Remove `#wholesale-hide-css` style tag
 - Set storefront config flags to `true`
 - Call `Ecwid.refreshConfig()`
+- Cart links and account steps remain visible (no hiding applied)
 
 ### SPA Navigation Handling
 - Hooks into `Ecwid.OnPageLoaded` events
@@ -196,6 +207,8 @@ Modified storefront configuration:
 - ✅ Buy buttons remain hidden
 - ✅ Registration banner shown (when enabled)
 - ✅ Can view order history and account settings
+- ✅ Cart links hidden (all anchors to `/products/cart`)
+- ✅ Account bag and favorites steps hidden
 - ✅ No console errors
 
 ### Logged-In Wholesale Customers
@@ -203,6 +216,8 @@ Modified storefront configuration:
 - ✅ Buy buttons enabled and functional
 - ✅ Price filter widget visible and functional
 - ✅ Can add to cart and complete checkout
+- ✅ Cart links visible and functional
+- ✅ Account bag and favorites steps visible
 - ✅ No registration banner shown
 - ✅ No console errors
 
@@ -284,7 +299,9 @@ Modified storefront configuration:
 ### Manual Testing Checklist
 - [ ] Log out → Verify prices hidden
 - [ ] Log in as retail customer → Verify prices hidden, banner shown
+- [ ] Log in as retail customer → Verify cart links hidden, account bag/favorites hidden
 - [ ] Log in as wholesale customer → Verify prices shown, no banner
+- [ ] Log in as wholesale customer → Verify cart links visible, account steps visible
 - [ ] Navigate between product/category pages → Verify state persists
 - [ ] Check Network tab → Verify no redundant `Customer.get()` calls
 - [ ] Check Console → Verify no errors or warnings

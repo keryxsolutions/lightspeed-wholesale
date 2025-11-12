@@ -1,9 +1,9 @@
 # Lightspeed Wholesale — Feature PRD Index
 
-**Version:** 2.0
+**Version:** 2.2
 **Owner:** Keryx Solutions
 **Status:** Active
-**Last Updated:** 2025-11-11
+**Last Updated:** 2025-11-12
 
 ---
 
@@ -34,6 +34,8 @@ This document serves as an index to the individual Product Requirement Documents
 - Idempotency support with `Idempotency-Key` header
 - Server handles: profile updates, extra fields, group assignment
 - Extra field UI metadata from `Ecwid.getAppPublicConfig(clientId)["extraFields"]`
+- Persistent success/error banners (5s, survives navigation)
+- One-time auto-redirect for non-wholesale users to registration
 - Telemetry tracking
 
 ---
@@ -49,6 +51,7 @@ This document serves as an index to the individual Product Requirement Documents
 - Client-side price hiding via CSS injection
 - Storefront config toggles (`show_price_on_items`, `show_buy_button`)
 - Wholesale membership detection via `Ecwid.Customer.get()`
+- Additional UI hiding for non-wholesale: cart links, account bag/favorites steps
 - SPA-aware navigation handling
 - Session caching to prevent flicker
 
@@ -101,6 +104,7 @@ The following utilities are used across multiple features and should be maintain
 - **Wholesale Group Name:** `window.WHOLESALE_GROUP_NAME` (default: `"Wholesaler"`)
 - **Registration Server URL:** `window.WHOLESALE_REG_SERVER_URL` (default: `"https://ecwid-registration.keryx-solutions.workers.dev"`)
 - **Feature Flags:** `WHOLESALE_FLAGS.ENABLE_WHOLESALE_REGISTRATION`, `WHOLESALE_FLAGS.ENABLE_WHOLESALE_BANNER`
+- **Public Config (v2):** Canonical source via `Ecwid.getAppPublicConfig(clientId)`; shape `{ version, updatedAt, hash, extraFields: [{ key, title, placeholder, type, required, options }] }` (no `entityTypes`)
 
 ### Required Ecwid Scopes
 
@@ -286,6 +290,16 @@ docs/
 ---
 
 ## Version History
+
+### Version 2.2 (2025-11-11)
+- **Registration & Gating Enhancements**
+- Added persistent success/error banners (5s expiration, survives navigation via sessionStorage `wr-banner`)
+- Changed registration button text from "Continue" to "Register"
+- Added customer data refresh after successful registration (`Ecwid.Customer.get()`)
+- Implemented one-time auto-redirect for logged-in non-wholesale users to registration page (sessionStorage `wr-autoredirect`)
+- Extended gating to hide cart links and account bag/favorites steps for non-wholesale users
+- Banners use fixed-position styling with auto-dismiss
+- Improved UX with seamless navigation and state persistence
 
 ### Version 2.1 (2025-11-11)
 - **Migration to External Registration Server**

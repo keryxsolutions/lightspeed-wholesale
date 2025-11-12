@@ -18,6 +18,9 @@ Inject a registration form into `/products/account/register` for logged-in, non-
 - Path: `/products/account/register` (both hash and pathname routing supported)
 - Triggered for logged-in users who are **not** wholesale members
 - Form hijacks `.ec-cart__body-inner` container on account pages
+- **Auto-redirect:** Logged-in non-wholesale users are automatically redirected to registration page once per session
+  - Uses `sessionStorage.setItem("wr-autoredirect", "1")` to prevent repeat redirects
+  - Does not redirect wholesale members or users already on registration page
 
 ### Prefill Sources
 Data populated from `Ecwid.Customer.get()`:
@@ -30,8 +33,28 @@ Data populated from `Ecwid.Customer.get()`:
 - Accept Marketing consent
 
 ### Extra Field Definitions (UI Only)
-- Source: `Ecwid.getAppPublicConfig(clientId)["extraFields"]`
-- Expected shape: `{ items: [{ key, title, type, textPlaceholder, required, options? }] }`
+- Source: `Ecwid.getAppPublicConfig(clientId)` (v2 public config)
+- Expected shape (v2):
+  ```
+  {
+    "version": 2,
+    "updatedAt": "ISO-8601",
+    "hash": "sha256-hex",
+    "extraFields": [
+      {
+        "key": "38BPWmS",
+        "title": "Cell phone",
+        "placeholder": "",
+        "type": "text", // or "select"
+        "required": false,
+        "options": null // or [{ "title": "Google" }, ...] for select
+      }
+    ]
+  }
+  ```
+- Notes:
+  - Curated upstream by the Registration Server; no client-side filtering by `entityTypes`
+  - Use `placeholder` (no `textPlaceholder`)
 - Purpose: **Display only** — client uses for labels, placeholders, and dropdown options
 - Server responsibility: Field key mapping and persistence via Admin REST API
 
@@ -94,9 +117,15 @@ Data populated from `Ecwid.Customer.get()`:
 
 **Client Post-Submit:**
 - Refresh storefront config: `Ecwid.refreshConfig()`
-- Set success flag: `sessionStorage.setItem("wr-success", "1")`
+- Re-fetch customer data: `Ecwid.Customer.get()` to force visibility update
+- Persist success banner: `sessionStorage.setItem("wr-banner", {...})` with 5s expiration
+- Show persistent success banner (survives navigation for 5s)
 - Redirect to `/products` (currently disabled for debugging)
-- Show success banner on redirect destination
+
+**On Failure:**
+- Persist error banner: `sessionStorage.setItem("wr-banner", {...})` with 5s expiration
+- Show persistent error banner with server error message
+- Banner survives page navigation within expiration window
 
 ### Country Options
 Limited to:
@@ -194,9 +223,11 @@ This is an **intentional constraint** for the current deployment.
 - ✅ Form injects on `/products/account/register` route
 - ✅ Email field is prefilled and read-only
 - ✅ Name, phone, company, postal code, country are prefilled from customer data
+- ✅ Submit button labeled **"Register"**
 - ✅ Required field validation prevents submission when empty
 - ✅ Form persists during SPA redraws via MutationObserver
 - ✅ Form removed when navigating away from registration route
+- ✅ Auto-redirect: Logged-in non-wholesale users redirected to registration page once per session
 - ✅ Telemetry events fire: `wholesale_registration_view`, `wholesale_registration_submit`, `wholesale_registration_success`, `wholesale_registration_failure`
 
 ### Submission Flow
@@ -205,6 +236,9 @@ This is an **intentional constraint** for the current deployment.
 - ✅ Client handles 202 Accepted responses with retry
 - ✅ Client displays server error messages to user
 - ✅ Client refreshes Ecwid config after successful submission
+- ✅ Client re-fetches customer data (`Ecwid.Customer.get()`) to force visibility update
+- ✅ Success banner persists across navigation for 5s via sessionStorage
+- ✅ Error banner persists across navigation for 5s via sessionStorage
 - ⚠️ Redirect to `/products` disabled (debugging mode)
 
 ### Server-Side Behavior (handled by Registration Server)
@@ -246,11 +280,15 @@ This is an **intentional constraint** for the current deployment.
 ### Classes
 - Form wrapper: `.wholesale-register-form`
 - Field groups: `.form-group`
-- Submit button: `.btn-primary`
+- Submit button: `.btn-primary` with text: **"Register"**
 - Error messages: `.error-message`
+- Persistent banner: `#wholesale-registration-transient-banner` (success/error)
 
 ### Styles
-- Banner styles defined in `app.css` (`.wholesale-registration-banner`)
+- Banner styles: Fixed position, top: 0, z-index: 10000
+  - Success: background `#4caf50`, white text
+  - Error: background `#d32f2f`, white text
+- Banner auto-removes after expiration (5s from creation)
 - Form styles inlined via `<style>` tag or in `app.css`
 
 ---

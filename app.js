@@ -54,7 +54,81 @@ try {
   window.trackWholesaleEvent = trackWholesaleEvent;
 } catch (_) {}
 
+// Banner persistence utilities (Version 2.2)
+const REG_BANNER_KEY = "wr-banner";
+
+function setRegistrationBanner(type, msg, durationMs = 5000) {
+  try {
+    const expiresAt = Date.now() + durationMs;
+    sessionStorage.setItem(
+      REG_BANNER_KEY,
+      JSON.stringify({ type, message: msg, expiresAt })
+    );
+  } catch (_) {}
+}
+
+function restoreRegistrationBanner() {
+  try {
+    const raw = sessionStorage.getItem(REG_BANNER_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (Date.now() > data.expiresAt) {
+      sessionStorage.removeItem(REG_BANNER_KEY);
+      return;
+    }
+    renderTopBanner(data.type, data.message);
+  } catch (_) {}
+}
+
+function renderTopBanner(type, msg) {
+  const id = "wholesale-registration-transient-banner";
+  removeNodeById(id);
+  const bg = type === "success" ? "#4caf50" : "#d32f2f";
+  const banner = document.createElement("div");
+  banner.id = id;
+  banner.textContent = msg;
+  Object.assign(banner.style, {
+    position: "fixed",
+    top: "0",
+    left: "0",
+    right: "0",
+    zIndex: "10000",
+    background: bg,
+    color: "#fff",
+    padding: "1rem",
+    textAlign: "center",
+    fontSize: "1rem",
+  });
+  document.body.appendChild(banner);
+  // Auto-dismiss after 5 seconds
+  setTimeout(() => removeNodeById(id), 5000);
+}
+
+// Auto-redirect utility for logged-in non-wholesale users (Version 2.2)
+function maybeRedirectToRegistration(isLoggedIn, isWholesale) {
+  try {
+    // Skip if not logged in or already wholesale
+    if (!isLoggedIn || isWholesale) return;
+
+    // Skip if already on registration page
+    if (isAccountRegisterPath()) return;
+
+    // Skip if already redirected this session
+    if (sessionStorage.getItem("wr-autoredirect") === "1") return;
+
+    // Redirect to registration page
+    sessionStorage.setItem("wr-autoredirect", "1");
+    console.log("Wholesale: Auto-redirecting non-wholesale user to registration");
+    window.location.href = toAccountRegisterPath();
+  } catch (_) {
+    // Ignore errors (sessionStorage, navigation failures)
+  }
+}
+
 Ecwid.OnAPILoaded.add(function () {
+  // Restore banner on page load (if exists and not expired)
+  restoreRegistrationBanner();
+
   // Initialize robust wholesale price visibility logic
   initializeWholesalePriceVisibility();
 
@@ -189,6 +263,47 @@ function initializeWholesalePriceVisibility() {
     }
   }
 
+  // Helper: hide cart links and account steps for non-wholesale users (Version 2.2)
+  function applyNonWholesaleUIHides(isWholesale, isLoggedIn) {
+    try {
+      // If wholesale or guest, restore any previously hidden elements
+      if (isWholesale || !isLoggedIn) {
+        // Restore cart links
+        document.querySelectorAll('a[data-wr-hidden-cart-link="1"]').forEach((el) => {
+          el.style.display = "";
+          el.removeAttribute("data-wr-hidden-cart-link");
+        });
+        // Restore account steps
+        document.querySelectorAll('[data-wr-hidden-account-step="1"]').forEach((el) => {
+          el.style.display = "";
+          el.removeAttribute("data-wr-hidden-account-step");
+        });
+        return;
+      }
+
+      // Hide cart links for logged-in non-wholesale users
+      document.querySelectorAll('a[href*="/products/cart"]').forEach((el) => {
+        if (el.getAttribute("data-wr-hidden-cart-link") !== "1") {
+          el.style.display = "none";
+          el.setAttribute("data-wr-hidden-cart-link", "1");
+        }
+      });
+
+      // Hide account bag and favorites steps
+      const accountSteps = [".ec-cart-step--bag", ".ec-cart-step--favorites"];
+      accountSteps.forEach((selector) => {
+        document.querySelectorAll(selector).forEach((el) => {
+          if (el.getAttribute("data-wr-hidden-account-step") !== "1") {
+            el.style.display = "none";
+            el.setAttribute("data-wr-hidden-account-step", "1");
+          }
+        });
+      });
+    } catch (err) {
+      console.warn("Wholesale: Error applying non-wholesale UI hides", err);
+    }
+  }
+
   // Poll for Ecwid.Customer API readiness
   function pollForCustomerAPI(callback, maxAttempts = 30, interval = 200) {
     let attempts = 0;
@@ -220,6 +335,12 @@ function initializeWholesalePriceVisibility() {
         showPrices = memberName === wholesaleName;
       }
 
+      // Auto-redirect non-wholesale users to registration (once per session)
+      maybeRedirectToRegistration(isLoggedIn, showPrices);
+
+      // Apply additional UI hiding for non-wholesale users
+      applyNonWholesaleUIHides(showPrices, isLoggedIn);
+
       if (showPrices) {
         setWholesaleConfig(true);
         removeWholesaleHidingCSS();
@@ -235,6 +356,7 @@ function initializeWholesalePriceVisibility() {
 
   // Re-run on SPA navigation/page changes
   Ecwid.OnPageLoaded.add(function () {
+    restoreRegistrationBanner(); // Restore banner on SPA navigation
     pollForCustomerAPI(updateWholesaleVisibility);
   });
 }
@@ -672,16 +794,7 @@ try {
 function initializeWholesaleRegistration() {
   if (!WHOLESALE_FLAGS.ENABLE_WHOLESALE_REGISTRATION) return;
 
-  // Check for success banner flag from redirect
-  try {
-    if (sessionStorage.getItem("wr-success") === "1") {
-      sessionStorage.removeItem("wr-success");
-      // Show banner after a short delay to ensure page is loaded
-      setTimeout(() => showRegistrationSuccessBanner(), 500);
-    }
-  } catch (e) {
-    // Ignore sessionStorage errors
-  }
+  // Note: Banner persistence now handled by restoreRegistrationBanner() in OnAPILoaded
 
   // Initial run
   try {
@@ -923,19 +1036,33 @@ function getAppStorageJSON(key) {
   }
   return null;
 }
+function validateAppPublicConfig() {
+  try {
+    if (typeof Ecwid?.getAppPublicConfig === "function") {
+      const raw = Ecwid.getAppPublicConfig(clientId);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed?.version !== 2) {
+        console.warn("Wholesale Reg: App public config version is not 2");
+      }
+      if (!Array.isArray(parsed?.extraFields)) {
+        console.warn("Wholesale Reg: App public config extraFields is not an array");
+      }
+    }
+  } catch (_) {}
+}
 /**
  * Load Customer Extra Field definitions from App Storage public/extrafields.
  * Returns { tax, hear, cell } or nulls if not found.
  */
 function loadCustomerExtraFieldDefsFromStorage() {
   try {
+    validateAppPublicConfig();
     const data = getAppStorageJSON("extraFields");
     if (!data) return null;
     const items = Array.isArray(data) ? data : [];
-    const customers = items.filter(
-      (it) =>
-        Array.isArray(it.entityTypes) && it.entityTypes.includes("CUSTOMERS")
-    );
+    // Config v2 is curated upstream; no entityTypes filtering needed
+    const customers = items;
     const byTitle = {};
     for (const it of customers) {
       const title = String(it.title || "").trim();
@@ -944,13 +1071,12 @@ function loadCustomerExtraFieldDefsFromStorage() {
       byTitle[low] = {
         key: it.key || null,
         title,
-        placeholder: it.textPlaceholder || "",
-        type: String(it.type || "TEXT").toLowerCase(), // normalize
+        placeholder: it.placeholder || "",
+        type: String(it.type || "text").toLowerCase(),
         required: !!it.required,
         options: Array.isArray(it.options)
           ? it.options.map((o) => ({ title: o.title }))
-          : null,
-        // no sections available in storage; leave undefined
+          : null
       };
     }
     const tax = byTitle["tax id"] || null;
@@ -1416,7 +1542,7 @@ async function renderOrUpdateAccountRegister() {
                   key: "hear",
                   inner:
                     // TODO: field is currently not a select type, but should be; check data
-                    defs.hear.type === "select" && defs.hear.options?.length
+                    (defs.hear?.options?.length)
                       ? selectInput({
                           id: "wr-hear",
                           label:
@@ -1425,6 +1551,7 @@ async function renderOrUpdateAccountRegister() {
                             value: o.title,
                             label: o.title,
                           })),
+                          placeholder: defs.hear.placeholder,
                         })
                       : textInput({
                           id: "wr-hear",
@@ -1459,7 +1586,7 @@ async function renderOrUpdateAccountRegister() {
                 type: "button",
                 inner: span({
                   class: "form-control__button-text",
-                  inner: "Continue",
+                  inner: "Register",
                 }),
               }),
             }),
@@ -1675,8 +1802,6 @@ function attachAccountRegisterHandlers(root, defs) {
       // Server returns: { status, customerId, groupId }
 
       trackWholesaleEvent("wholesale_registration_success", {});
-      msg.textContent = "Registration submitted successfully!";
-      msg.className = "form__msg";
 
       // Refresh Ecwid config to reflect updated customer group
       if (typeof Ecwid.refreshConfig === "function") {
@@ -1684,12 +1809,19 @@ function attachAccountRegisterHandlers(root, defs) {
         Ecwid.refreshConfig();
       }
 
-      // Set flag for success banner on redirect
-      try {
-        sessionStorage.setItem("wr-success", "1");
-      } catch (e) {
-        // Ignore sessionStorage errors
+      // Force customer data refresh to update wholesale status immediately
+      if (Ecwid?.Customer?.get) {
+        Ecwid.Customer.get(function () {
+          console.log("Wholesale Reg: Customer data refreshed after registration");
+        });
       }
+
+      // Set persistent success banner (survives navigation for 5s)
+      setRegistrationBanner(
+        "success",
+        "Your wholesale registration has been submitted successfully!",
+        5000
+      );
 
       // Redirect to /products
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -1699,31 +1831,15 @@ function attachAccountRegisterHandlers(root, defs) {
       trackWholesaleEvent("wholesale_registration_failure", {
         error: err.message,
       });
-      msg.textContent =
-        "Registration failed. " + (err?.message || "Please try again.");
+      const errorMsg = "Registration failed. " + (err?.message || "Please try again.");
+      msg.textContent = errorMsg;
       msg.className = "form__msg form__msg--error";
+
+      // Set persistent error banner (survives navigation for 5s)
+      setRegistrationBanner("error", errorMsg, 5000);
     }
   });
 }
 
-function showRegistrationSuccessBanner() {
-  const id = "wholesale-success-banner";
-  removeNodeById(id);
-  const banner = document.createElement("div");
-  banner.id = id;
-  banner.className = "wholesale-success-banner";
-  banner.style.position = "fixed";
-  banner.style.top = "0";
-  banner.style.left = "0";
-  banner.style.right = "0";
-  banner.style.zIndex = "10000";
-  banner.style.background = "#4caf50";
-  banner.style.color = "#fff";
-  banner.style.padding = "12px 16px";
-  banner.style.textAlign = "center";
-  banner.style.fontWeight = "600";
-  banner.innerHTML =
-    "Your wholesale registration has been submitted. We will review your application and update your account shortly.";
-  document.body.appendChild(banner);
-  setTimeout(() => removeNodeById(id), 8000);
-}
+// Deprecated: Replaced by setRegistrationBanner + restoreRegistrationBanner system (v2.2)
+// function showRegistrationSuccessBanner() { ... }

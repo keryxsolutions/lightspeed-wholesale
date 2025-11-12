@@ -1,9 +1,136 @@
 # Implementation Summary: Wholesale Registration Flow
 
-**Latest Update**: 2025-11-11 - **Migration to External Registration Server**
+**Latest Update**: 2025-11-11 - **Registration & Gating Enhancements (v2.2)**
+**Previous Update**: 2025-11-11 - **Migration to External Registration Server (v2.1)**
 **Original Implementation**: 2025-11-05
 **Branch**: `claude/test-wholesale-registration-flow-011CUoqHyxBnuG5RGjFK2G5M`
-**Status**: ✅ Complete - External Server Architecture
+**Status**: 🔄 In Progress - Implementing Enhancements
+
+---
+
+## 🎯 Registration & Gating Enhancements (Version 2.2, 2025-11-11)
+
+### Overview
+
+Following the successful external server migration, this enhancement improves user experience with persistent banners, automatic redirects, and additional UI element hiding.
+
+### Key Improvements
+
+**1. Persistent Success/Error Banners**
+- Banners persist across navigation for 5 seconds using sessionStorage (`wr-banner`)
+- Fixed-position display at top of viewport (z-index: 10000)
+- Auto-dismiss after expiration
+- Survives SPA page transitions
+
+**2. Registration Button Text**
+- Changed from "Continue" to "Register" for clarity
+- Better communicates the action being performed
+
+**3. Customer Data Refresh**
+- Forces `Ecwid.Customer.get()` refresh after successful registration
+- Ensures wholesale status is immediately reflected in UI
+- Prevents flicker or delayed price visibility
+
+**4. One-Time Auto-Redirect**
+- Logged-in non-wholesale users automatically redirected to registration page
+- Uses sessionStorage flag (`wr-autoredirect`) to prevent repeated redirects
+- Only triggers once per session
+- Skips redirect if already on registration page
+
+**5. Additional UI Gating**
+- Hide cart links (`/products/cart` anchors) for non-wholesale users
+- Hide account bag and favorites steps on account pages
+- Mark hidden elements with data attributes for debugging
+- Restore visibility for wholesale members
+
+### Implementation Details
+
+**Banner Persistence Mechanism:**
+```javascript
+// sessionStorage format:
+{
+  "type": "success" | "error",
+  "message": "...",
+  "expiresAt": timestamp
+}
+
+// Functions:
+setRegistrationBanner(type, msg, durationMs=5000)
+restoreRegistrationBanner()  // Called on page load
+renderTopBanner(type, msg)   // Display fixed-position banner
+```
+
+**Auto-Redirect Logic:**
+```javascript
+function maybeRedirectToRegistration(customer) {
+  // Check if:
+  // 1. Customer is logged in
+  // 2. Not a wholesale member
+  // 3. Not already on registration page
+  // 4. No redirect flag in sessionStorage
+  // Then: redirect and set flag
+}
+```
+
+**Additional Gating:**
+```javascript
+function applyNonWholesaleUIHides(isWholesale, isLoggedIn) {
+  if (!isLoggedIn || isWholesale) {
+    // Restore visibility for wholesale/guests
+    return;
+  }
+
+  // Hide cart links
+  document.querySelectorAll('a[href*="/products/cart"]')
+    .forEach(el => {
+      el.style.display = 'none';
+      el.setAttribute('data-wr-hidden-cart-link', '1');
+    });
+
+  // Hide account steps
+  ['.ec-cart-step--bag', '.ec-cart-step--favorites']
+    .forEach(sel => {
+      document.querySelectorAll(sel).forEach(el => {
+        el.style.display = 'none';
+        el.setAttribute('data-wr-hidden-account-step', '1');
+      });
+    });
+}
+```
+
+### Files Modified
+
+**Documentation:**
+- ✅ `docs/registration.prd` - Added banner persistence, auto-redirect, customer refresh
+- ✅ `docs/wholesale-gating.prd` - Added cart/favorites hiding specification
+- ✅ `docs/wholesale-registration-master.prd` - Updated to version 2.2
+- ✅ `tasks.md` - Added enhancement checklist
+- ✅ `IMPLEMENTATION_SUMMARY.md` - This file
+
+**Code (Pending):**
+- ⬜ `app.js` - All enhancement implementations
+
+### Benefits
+
+1. **Better UX**: Users see clear success/error feedback that persists across navigation
+2. **Reduced Friction**: Auto-redirect ensures users don't miss registration step
+3. **Clearer UI**: Cart links and bag/favorites hidden when not applicable
+4. **Consistency**: "Register" button text matches industry standards
+5. **Immediate Feedback**: Customer data refresh ensures instant price visibility
+
+### Testing Requirements
+
+Before deployment:
+- [ ] Banner displays after registration success and survives navigation (5s)
+- [ ] Banner displays after registration error with server message
+- [ ] Banner auto-dismisses after 5 seconds
+- [ ] Auto-redirect triggers once per session for non-wholesale users
+- [ ] Auto-redirect skips if already on registration page
+- [ ] Cart links hidden for non-wholesale, visible for wholesale
+- [ ] Account bag/favorites steps hidden for non-wholesale
+- [ ] Registration button displays "Register" text
+- [ ] Customer data refresh triggers after successful registration
+- [ ] Wholesale status reflects immediately in UI after registration
 
 ---
 

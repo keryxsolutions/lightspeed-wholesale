@@ -40,28 +40,96 @@ const token = await Ecwid.Storefront.getSessionToken();
   "storeId": string,    // Ecwid store ID
   "lang": string,       // Optional, language code (e.g., "en")
   "values": {
-    "name": string,           // Customer full name
-    "companyName": string,    // Company name
-    "postalCode": string,     // Postal/ZIP code
-    "countryCode": string,    // ISO 3166-1 alpha-2 (e.g., "US")
-    "phone": string,          // Business phone (becomes default contact)
-    "cellPhone": string,      // Cell phone (secondary contact)
-    "taxId": string,          // Tax ID / VAT number
-    "hear": string,           // How did you hear about us?
-    "acceptMarketing": boolean // Marketing consent
+    "name": string,                  // Customer full name
+    "companyName": string,           // Company name
+    "postalCode": string,            // Postal/ZIP code
+    "countryCode": string,           // ISO 3166-1 alpha-2 (e.g., "US")
+    "street": string,                // Street address (optional, for full address)
+    "city": string,                  // City (optional, for full address)
+    "stateOrProvinceCode": string,   // State/province code (optional, e.g., "CA")
+    "stateOrProvinceName": string,   // State/province name (optional, e.g., "California")
+    "phone": string,                 // Business phone (becomes default contact)
+    "cellPhone": string,             // Cell phone (secondary contact)
+    "taxId": string,                 // Tax ID / VAT number
+    "hear": string,                  // How did you hear about us?
+    "acceptMarketing": boolean       // Marketing consent
   }
 }
 ```
+
+**All fields in `values` are optional.**
 
 **Field Mapping**:
 - `name` → Customer name, billing name, shipping name
 - `companyName` → Billing company, shipping company
 - `postalCode`/`countryCode` → Billing and shipping addresses
+- `street` → Shipping address street (NEW: for full address)
+- `city` → Shipping address city (NEW: for full address)
+- `stateOrProvinceCode` → Shipping address state code (NEW: for full address)
+- `stateOrProvinceName` → Shipping address state name (NEW: alternative to code)
 - `phone` → Billing phone + default business contact
 - `cellPhone` → Secondary phone contact
 - `taxId` → Customer taxId field + extrafield (if configured)
 - `hear` → Extrafield (if configured)
 - `acceptMarketing` → Customer acceptMarketing flag
+
+### Shipping address behavior (partial vs full)
+
+Ecwid persists shippingAddresses even when only a subset of fields is provided, but the Admin UI only surfaces addresses that include full location details.
+
+- Partial address (may not appear in Admin UI): name/company + postalCode + countryCode. GET shows minimal address and often `defaultAddress: false`, `orderBy: -1` and `addressFormatted` without street/city/state.
+- Full address (visible in Admin UI): include street, city, and stateOrProvinceCode (or stateOrProvinceName) along with postalCode and countryCode. GET shows full `addressFormatted`; Admin UI displays it. Default status is managed by Ecwid; sending `defaultAddress` is not guaranteed to be honored.
+
+Direct REST examples (replace placeholders):
+
+```bash
+# Partial (stored, often not visible in Admin UI)
+curl -i -X PUT \
+  "https://app.ecwid.com/api/v3/${STORE_ID}/customers/${CUSTOMER_ID}" \
+  -H "Authorization: Bearer ${SECRET_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "shippingAddresses": [
+      { "name": "Test User", "companyName": "Acme Inc", "postalCode": "73301", "countryCode": "US" }
+    ]
+  }'
+
+curl -s \
+  "https://app.ecwid.com/api/v3/${STORE_ID}/customers/${CUSTOMER_ID}?responseFields=shippingAddresses" \
+  -H "Authorization: Bearer ${SECRET_TOKEN}" | jq
+```
+
+```bash
+# Full (visible in Admin UI)
+curl -i -X PUT \
+  "https://app.ecwid.com/api/v3/${STORE_ID}/customers/${CUSTOMER_ID}" \
+  -H "Authorization: Bearer ${SECRET_TOKEN}" \
+  -H "Content-Type: application/json" \
+  --data-binary @- <<JSON
+{
+  "shippingAddresses": [
+    {
+      "name": "Test User",
+      "companyName": "Acme Inc",
+      "street": "12345 NW 123th Ave",
+      "city": "Alachua",
+      "postalCode": "32615",
+      "countryCode": "US",
+      "stateOrProvinceCode": "FL"
+    }
+  ]
+}
+JSON
+
+curl -s \
+  "https://app.ecwid.com/api/v3/${STORE_ID}/customers/${CUSTOMER_ID}?responseFields=shippingAddresses" \
+  -H "Authorization: Bearer ${SECRET_TOKEN}" | jq
+```
+
+Notes:
+
+- Our /api/register endpoint continues to require only the existing minimal fields. If the client can provide street/city/state, the server will map them when available to help the address appear in Admin UI.
+- Updating an existing address can be done by including its `id` in the shippingAddresses object; otherwise a new address entry is created.
 
 **Server-Controlled**:
 - `customerGroupId` → Resolved server-side to wholesale group (not client-settable)
@@ -80,9 +148,21 @@ const token = await Ecwid.Storefront.getSessionToken();
 
 ### Error Responses
 
-#### 400 Bad Request
-Invalid request schema or missing required fields.
+All error responses follow a consistent JSON format:
+```json
+{
+  "errorMessage": "Human-readable error description",
+  "errorCode": "MACHINE_READABLE_CODE"
+}
+```
 
+#### 400 Bad Request
+
+Invalid request schema, missing required fields, or malformed JSON.
+
+**Possible error codes**:
+
+**`E_INVALID_REQUEST`** - Invalid request schema or missing required fields
 ```json
 {
   "errorMessage": "Invalid request schema",
@@ -90,8 +170,25 @@ Invalid request schema or missing required fields.
 }
 ```
 
+**`E_INVALID_JSON`** - Malformed JSON in request body
+```json
+{
+  "errorMessage": "Malformed JSON in request body",
+  "errorCode": "E_INVALID_JSON"
+}
+```
+
+**Common causes**:
+- Missing `storeId` field
+- Missing `Idempotency-Key` header
+- Invalid field types in `values` object
+- Malformed JSON syntax
+
 #### 401 Unauthorized
-Invalid or expired storefront session token.
+
+**Error code**: `E_STOREFRONT_UNAUTHORIZED`
+
+Storefront session verification failed. This error covers all authentication failures:
 
 ```json
 {
@@ -100,8 +197,19 @@ Invalid or expired storefront session token.
 }
 ```
 
+**When this occurs**:
+- Invalid or expired session token
+- Session token not associated with logged-in customer
+- Storefront API returns 4xx error (except 408, 429)
+- Includes: 400, 401, 403, 404, 410, 422 from Storefront API
+
+**Client action**: Obtain a fresh session token or prompt the user to log in.
+
 #### 403 Forbidden
-Origin not in allowlist.
+
+**Error code**: `E_FORBIDDEN_ORIGIN`
+
+Request origin not in server allowlist (CORS violation).
 
 ```json
 {
@@ -110,7 +218,12 @@ Origin not in allowlist.
 }
 ```
 
+**Client action**: Verify the request is being made from an allowed storefront domain. Contact the administrator to add your origin to the allowlist.
+
 #### 409 Conflict
+
+**Error code**: `E_IDEMPOTENT_REPLAY`
+
 Idempotency key reused with different request body.
 
 ```json
@@ -120,11 +233,17 @@ Idempotency key reused with different request body.
 }
 ```
 
+**Client action**: Generate a new unique idempotency key, or retry with the original key if the request body is identical.
+
 #### 429 Too Many Requests
-Rate limit exceeded.
+
+**Error code**: `E_RATE_LIMITED`
+
+Rate limit exceeded (IP-based, token-based, or store-level).
 
 **Headers**: `Retry-After: <seconds>`
 
+**Per IP/Token limits**:
 ```json
 {
   "errorMessage": "Too many requests",
@@ -132,8 +251,7 @@ Rate limit exceeded.
 }
 ```
 
-Or for store-level limits:
-
+**Store-level limits**:
 ```json
 {
   "errorMessage": "Too many requests to store",
@@ -141,9 +259,21 @@ Or for store-level limits:
 }
 ```
 
-#### 500 Server Error
-Customer group not found in store configuration.
+**Client action**: Wait for the duration specified in `Retry-After` header before retrying. Implement exponential backoff for subsequent retries.
 
+#### 500 Internal Server Error
+
+**Possible error codes**:
+
+**`E_SERVER_CONFIG`** - Server misconfiguration
+```json
+{
+  "errorMessage": "Store secret_token not configured",
+  "errorCode": "E_SERVER_CONFIG"
+}
+```
+
+**`E_GROUP_NOT_FOUND`** - Required customer group not found
 ```json
 {
   "errorMessage": "Required customer group not found",
@@ -151,8 +281,13 @@ Customer group not found in store configuration.
 }
 ```
 
+**Client action**: Contact support. These errors require server-side configuration changes.
+
 #### 502 Bad Gateway
-Upstream Ecwid API failure.
+
+**Error code**: `E_UPSTREAM`
+
+Upstream Ecwid API failure or degradation. This is a temporary infrastructure issue.
 
 ```json
 {
@@ -160,6 +295,20 @@ Upstream Ecwid API failure.
   "errorCode": "E_UPSTREAM"
 }
 ```
+
+**When this occurs**:
+- **Storefront API issues**:
+  - 5xx server errors (500, 502, 503, 504)
+  - Network timeouts (status 0)
+  - 408 Request Timeout
+  - 429 Rate Limit (upstream capacity issue)
+- **REST API issues**:
+  - 5xx server errors
+  - Network failures or timeouts
+- **Customer Groups API issues**:
+  - 4xx/5xx errors (except "Group not found" logical error)
+
+**Client action**: Retry with exponential backoff. These are temporary infrastructure/capacity problems that typically resolve quickly.
 
 ### Idempotency Behavior
 
@@ -314,6 +463,94 @@ ORIGIN_ALLOWLIST = "https://yourdomain.com,https://yourdomain.company.site"
 ```
 
 Contact the server administrator to add your origin.
+
+## Public App Config (App Storage)
+
+The server publishes a minimal "public" config to Ecwid App Storage when extrafield keys change, enabling storefronts to reference extrafield keys by title reliably without making additional REST calls or exposing secrets.
+
+### Purpose
+
+- Storefront needs stable extrafield keys to map form fields correctly
+- Cannot call REST API from client (would expose `secret_token`)
+- Server syncs public config automatically after resolving extrafield keys
+
+### Storage Details
+
+**Storage key**: `public`
+
+**Data format**: Raw JSON object:
+
+```json
+{
+  "version": 2,
+  "updatedAt": "2025-11-11T23:00:00.000Z",
+  "hash": "c1f4d2d8e6c9...",
+  "extraFields": [
+    {
+      "key": "HWVrQNC",
+      "title": "Tax ID",
+      "placeholder": "Enter tax id",
+      "type": "text",
+      "required": false,
+      "options": null
+    }
+  ]
+}
+```
+
+### Client Access
+
+Canonical (recommended): App Public Config
+```javascript
+// Read public config published by the server
+const raw = Ecwid.getAppPublicConfig('custom-app-121843055-1');
+const config = raw ? JSON.parse(raw) : null;
+const extraFields = config?.extraFields || [];
+```
+
+Legacy alternatives (when needed):
+- REST: `GET https://app.ecwid.com/api/v3/${storeId}/storage/public` with `Authorization: Bearer ${publicToken}`
+  ```javascript
+  const response = await fetch(
+    `https://app.ecwid.com/api/v3/${storeId}/storage/public`,
+    { headers: { Authorization: `Bearer ${publicToken}` } }
+  );
+  const config = await response.json();
+  const extraFields = config.extraFields;
+  ```
+- SDK (if exposed): `Ecwid.getAppStorage('public')`
+  ```javascript
+  const config = await Ecwid.getAppStorage('public');
+  const extraFields = config.extraFields;
+  ```
+
+### Usage Example
+
+Map form fields using the published extrafield keys:
+
+```javascript
+// Fetch the public config
+const config = await getPublicAppConfig(storeId);
+const extraFieldMap = config.extraFields.reduce(
+  (acc, field) => ({ ...acc, [field.title]: field.key }),
+  {}
+);
+
+// Use keys in registration
+const taxIdKey = extraFieldMap['Tax ID'];
+const hearKey = extraFieldMap['How did you hear about us?'];
+```
+
+### Important Notes
+
+- App Storage is written by the **server** using the store's `secret_token`
+- Do **not** attempt to write it from the client
+- Config is updated automatically when extrafield definitions change (best-effort, non-blocking)
+  - Read using `public_token` or via Ecwid SDK (no secrets required)
+  - Data is stored as a raw JSON object (not stringified)
+  - Config is versioned; current version is 2
+  - Each `extraField` includes typed metadata (`type`, `required`, `placeholder`, `options`)
+  - Warmup/cron also publish the v2 public config (hash-based no-op when unchanged) and will overwrite legacy v1 shape if present
 
 ## Security Notes
 
