@@ -8,19 +8,26 @@
 
 ## 1. Summary
 
-Inject a registration form into `/products/account/register` for logged-in, non-wholesale users. Prefill customer data from `Ecwid.Customer.get()`. Submit registration to external **Ecwid Registration Server** using storefront session token for authentication. Server handles all Admin REST operations (customer profile updates, extra fields persistence, and immediate customer group assignment).
-
+Inject a registration form into `/products/account/register` for logged-in, non-wholesale users and an edit experience on `/products/account/edit` for logged-in wholesale users. Prefill customer data from `Ecwid.Customer.get()`. Submit registration to external **Ecwid Registration Server** using storefront session token for authentication. Server handles all Admin REST operations (customer profile updates, extra fields persistence, and immediate customer group assignment).
 ---
 
 ## 2. Current Behavior (as implemented)
 
-### Route
-- Path: `/products/account/register` (both hash and pathname routing supported)
-- Triggered for logged-in users who are **not** wholesale members
-- Form hijacks `.ec-cart__body-inner` container on account pages
-- **Auto-redirect:** Logged-in non-wholesale users are automatically redirected to registration page once per session
-  - Uses `sessionStorage.setItem("wr-autoredirect", "1")` to prevent repeat redirects
-  - Does not redirect wholesale members or users already on registration page
+### Routes & Access
+- Routes: `/products/account/register` and `/products/account/edit` (pathname or hash supported)
+- Access rules:
+  - Not logged in → both routes redirect to `/account`
+  - Logged-in non-wholesale → allow `register`, block `edit` (redirect `/account`)
+  - Logged-in wholesale → allow `edit`, block `register` (redirect `/account`)
+- Auto-redirect: logged-in non-wholesale users are redirected once per session to `/products/account/register` when off the register/edit routes (session key `wr-autoredirect`).
+
+### Page Integration & Navigation
+- Form hijacks `.ec-cart__body-inner` container on account pages; cleans up when leaving register/edit routes.
+- SPA-safe: listens to `OnPageLoaded` + `hashchange`; location checks ensure re-render/cleanup when moving between account subroutes.
+- Account navigation fix: clicking `/products/account` from register/edit forces the account page to rehydrate (no stuck view).
+
+### Persistent Banners
+- Success/error banners stored in `sessionStorage` (`wr-banner`) and restored on load/SPAs via `restoreRegistrationBanner()`; copy varies by mode.
 
 ### Prefill Sources
 Data populated from `Ecwid.Customer.get()`:
@@ -31,6 +38,18 @@ Data populated from `Ecwid.Customer.get()`:
 - Postal Code
 - Country Code (limited to US, UM, VI — intentional constraint)
 - Accept Marketing consent
+
+### Mode-Specific UX (Register vs Edit)
+- Register mode (`/products/account/register`): email shown read-only; submit label **"Register"**; success banner "Your wholesale registration has been submitted."; optional redirect to `/products` (currently disabled for debugging); errors reference registration.
+- Edit mode (`/products/account/edit`): email hidden; submit label **"Save"**; success banner "Your info has been updated."; redirect to `/products/account` after success; errors use "saving info" tone; payload unchanged.
+- Both modes: required field validation identical; banners persist 5s via `wr-banner` in `sessionStorage`.
+
+### Account Info Card (Account Landing)
+- On `/products/account`, append a custom `.ec-cart__step` under `.ec-cart__account-info` showing customer name + state + email (placeholder when unavailable).
+- Idempotent insert; removed/restored on SPA navigation to avoid duplicates.
+
+### Shipping Address Note
+- Shipping address persistence depends on Registration Server fix; client continues sending name/company/postal/country/phone and will validate once server update lands.
 
 ### Extra Field Definitions (UI Only)
 - Source: `Ecwid.getAppPublicConfig(clientId)` (v2 public config)
@@ -57,6 +76,13 @@ Data populated from `Ecwid.Customer.get()`:
   - Use `placeholder` (no `textPlaceholder`)
 - Purpose: **Display only** — client uses for labels, placeholders, and dropdown options
 - Server responsibility: Field key mapping and persistence via Admin REST API
+
+### Appendix: App Public Config (App Storage v2)
+- **Source:** Registration Server publishes to Ecwid App Storage (`public`) and exposes via `Ecwid.getAppPublicConfig(clientId)`; client is read-only.
+- **Shape:** `{ version, updatedAt, hash, extraFields: [{ key, title, placeholder, type, required, options }] }` (no `entityTypes`).
+- **Publication:** Server writes using secret token with hash-based no-op; updates occur when extrafield keys/metadata change.
+- **Usage:** Client reads via `Ecwid.getAppPublicConfig(clientId)`; fallback (if ever needed) is `GET /api/v3/{storeId}/storage/public` with public token. Do **not** write from storefront.
+- **Scope:** UI metadata only; server resolves keys and persists values via Admin REST.
 
 ### Submission Behavior
 **Client submits to:** `POST {REG_SERVER_URL}/api/register`
@@ -116,16 +142,15 @@ Data populated from `Ecwid.Customer.get()`:
 5. Return success response with IDs
 
 **Client Post-Submit:**
-- Refresh storefront config: `Ecwid.refreshConfig()`
-- Re-fetch customer data: `Ecwid.Customer.get()` to force visibility update
-- Persist success banner: `sessionStorage.setItem("wr-banner", {...})` with 5s expiration
-- Show persistent success banner (survives navigation for 5s)
-- Redirect to `/products` (currently disabled for debugging)
+- Refresh storefront config: `Ecwid.refreshConfig()` (delayed 500ms)
+- Force customer refresh: `Ecwid.Customer.get()` after success to update wholesale status immediately
+- Register mode: success banner "Your wholesale registration has been submitted."; optional redirect to `/products` (debug build keeps redirect disabled).
+- Edit mode: success banner "Your info has been updated." and redirect to `/products/account`.
+- Banners persist 5s via `wr-banner` and restore on navigation.
 
 **On Failure:**
-- Persist error banner: `sessionStorage.setItem("wr-banner", {...})` with 5s expiration
-- Show persistent error banner with server error message
-- Banner survives page navigation within expiration window
+- Inline error + persistent error banner via `setRegistrationBanner("error", message, 5000)`; copy references registration or saving info based on mode
+- Banner restores across navigation within the 5s expiration window
 
 ### Country Options
 Limited to:
@@ -220,26 +245,26 @@ This is an **intentional constraint** for the current deployment.
 ## 6. Acceptance Criteria (current implementation)
 
 ### Client-Side Behavior
-- ✅ Form injects on `/products/account/register` route
-- ✅ Email field is prefilled and read-only
-- ✅ Name, phone, company, postal code, country are prefilled from customer data
-- ✅ Submit button labeled **"Register"**
-- ✅ Required field validation prevents submission when empty
-- ✅ Form persists during SPA redraws via MutationObserver
-- ✅ Form removed when navigating away from registration route
-- ✅ Auto-redirect: Logged-in non-wholesale users redirected to registration page once per session
+- ✅ Form injects on `/products/account/register` (non-wholesale) and `/products/account/edit` (wholesale)
+- ✅ Access rules enforced: not logged in → `/account`; non-wholesale blocked from edit; wholesale blocked from register
+- ✅ Email shown read-only in register mode; hidden in edit mode
+- ✅ Name, phone, company, postal code, country prefilled from customer data; same validation rules in both modes
+- ✅ Submit button text: Register (register mode) / Save (edit mode)
+- ✅ Form persists during SPA redraws; cleans up when leaving register/edit; account navigation to `/products/account` rehydrates
+- ✅ Auto-redirect: Logged-in non-wholesale users redirected to registration page once per session (not when on edit/wholesale)
 - ✅ Telemetry events fire: `wholesale_registration_view`, `wholesale_registration_submit`, `wholesale_registration_success`, `wholesale_registration_failure`
+- ✅ Account info card renders on `/products/account` with customer name/state/email (placeholder-safe)
 
 ### Submission Flow
 - ✅ Client retrieves storefront session token
 - ✅ Client POSTs to Registration Server with Bearer token and Idempotency-Key
 - ✅ Client handles 202 Accepted responses with retry
-- ✅ Client displays server error messages to user
+- ✅ Client displays server error messages to user (mode-specific copy for registration vs saving info)
 - ✅ Client refreshes Ecwid config after successful submission
 - ✅ Client re-fetches customer data (`Ecwid.Customer.get()`) to force visibility update
-- ✅ Success banner persists across navigation for 5s via sessionStorage
+- ✅ Register mode: success banner persists across navigation for 5s via sessionStorage; optional redirect to `/products` remains disabled for debugging
+- ✅ Edit mode: success banner "Your info has been updated." persists for 5s and redirects to `/products/account`
 - ✅ Error banner persists across navigation for 5s via sessionStorage
-- ⚠️ Redirect to `/products` disabled (debugging mode)
 
 ### Server-Side Behavior (handled by Registration Server)
 - ✅ Server validates session token and extracts customer ID
@@ -349,6 +374,6 @@ When splitting into standalone app:
 
 ---
 
-**Last Updated:** 2025-11-11 (Migration to external Registration Server)
+**Last Updated:** 2025-12-08 (Register/Edit access rules, mode-specific UX, account card)
 **Implementation Status:** ✅ Complete — Client submits to external server; server handles all persistence and group assignment
 **Architecture:** External Registration Server (replaced storefront-only submission)

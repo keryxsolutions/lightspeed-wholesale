@@ -18,7 +18,7 @@ For detailed specifications, acceptance criteria, and implementation notes, see:
 - **[Category Banners](docs/category-banners.prd)** — Hero banner rendering with image and text overlays
 - **[Product Tags](docs/product-tags.prd)** — Tag display from product attributes with placeholder links
 
-**Master PRD Index:** [docs/wholesale-registration-master.prd](docs/wholesale-registration-master.prd) — Overview and cross-cutting concerns
+**Master PRD Index:** [docs/index.prd](docs/index.prd) — Overview and cross-cutting concerns
 
 ## Files Overview
 
@@ -34,9 +34,9 @@ For detailed specifications, acceptance criteria, and implementation notes, see:
 - Image recommended: 1920×400px or larger
 
 ### Behavior
-- On category pages, the script fetches category data via REST and inserts a `.category-banner` wrapper inside `.ecwid-productBrowser-head`
+- On category pages, the script fetches category data via REST and inserts a `.category-banner` wrapper as the first child of `.ecwid-productBrowser-head`
 - The category image fills the banner; the existing description becomes the overlay (`.category-banner-text`)
-- Fonts and CSS are loaded from `app.css` and Google Fonts
+- Fonts and CSS are loaded from `app.css` and Google Fonts (Cormorant Garamond)
 
 ### Current Status
 - ✅ JS complete in `app.js`
@@ -203,7 +203,7 @@ Console-backed events (see [registration.prd](docs/registration.prd) for details
 - [ ] Test on category and product pages
 
 ## Testing
-- See `TESTING_STRATEGY.md` for step-by-step validation of banner, tags, wholesale visibility, and registration flow.
+- See `TESTING.md` for consolidated validation of banner, tags, wholesale visibility, and registration flow.
 - Status and registration actions run via Ecwid REST using the public token.
 
 ## Development Notes

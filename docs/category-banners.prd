@@ -28,34 +28,32 @@ Display full-width hero banners on category pages using the category's featured 
    - Uses `Ecwid.getAppPublicToken(clientId)` for authorization
 3. If category has `originalImageUrl` and `description`:
    - Find `.ecwid-productBrowser-head` container
-   - Wrap container in `.category-banner` div
+   - Insert a `.category-banner` wrapper as the **first child** of that container
    - Insert `<img>` with category image as full-width background
-   - Overlay existing `.grid__description` element on top of image
+   - Move existing `.grid__description` element into the wrapper and apply `.category-banner-text`
 4. Inject external CSS from GitHub Pages: `app.css`
-5. Load Google Fonts: Roboto (400, 700)
+5. Load Google Font: Cormorant Garamond (single insert guard)
 
 ### DOM Structure (after injection)
 ```html
 <div class="category-banner">
   <img src="{category.originalImageUrl}" alt="{category.name}" class="category-banner-image" />
-  <div class="ecwid-productBrowser-head">
-    <div class="grid__description category-banner-text">
-      {category.description HTML}
-    </div>
+  <div class="grid__description category-banner-text">
+    {category.description HTML}
   </div>
 </div>
 ```
 
 ### Styling
 - **External CSS:** `https://keryxsolutions.github.io/lightspeed-wholesale/app.css`
-- **Font:** Google Fonts Roboto (weights 400, 700)
+- **Font:** Google Fonts **Cormorant Garamond** (weights 300–700)
 - **Layout:** Full-width image with centered, semi-transparent text overlay
 - **Responsive:** Scales on mobile and desktop
 
 ### SPA Navigation Handling
-- Idempotent: Safe to call multiple times (checks if banner already exists)
-- Cleans up on navigation away from category pages
-- Re-renders on category-to-category navigation
+- Idempotent: Safe to call multiple times (skip if wrapper exists; cleanup on every `OnPageLoaded` before rendering)
+- Two fetch/render attempts (early ~400ms and late ~1800ms) to cover slow DOM/API readiness
+- Cleans up on navigation away from category pages; removes `.category-banner` nodes and `category-banner-container` class
 
 ---
 
@@ -189,10 +187,10 @@ Display full-width hero banners on category pages using the category's featured 
 ## 7. DOM and CSS
 
 ### CSS Classes
-- `.category-banner` — Wrapper for entire banner (image + overlay)
-- `.category-banner-image` — Full-width `<img>` element
+- `.category-banner` — Wrapper inserted as first child of `.ecwid-productBrowser-head`
+- `.category-banner-image` — `<img>` element (inline styles set to cover and center)
 - `.category-banner-text` — Text overlay container (applied to `.grid__description`)
-- `.ecwid-productBrowser-head` — Ecwid's original header (repositioned)
+- `.ecwid-productBrowser-head` — Original header that hosts the wrapper
 
 ### Inline Styles (JavaScript-injected)
 ```javascript
@@ -215,10 +213,9 @@ Display full-width hero banners on category pages using the category's featured 
   margin-bottom: 2rem;
 }
 
-.category-banner-image {
+.category-banner img {
   width: 100%;
   height: auto;
-  display: block;
 }
 
 .category-banner-text {
@@ -236,7 +233,7 @@ Display full-width hero banners on category pages using the category's featured 
 ```
 
 ### Google Fonts
-**URL:** `https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap`
+**URL:** `https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap`
 **Usage:** Applied to `.category-banner-text`
 
 ---

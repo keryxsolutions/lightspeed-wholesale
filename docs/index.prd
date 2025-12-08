@@ -1,9 +1,9 @@
 # Lightspeed Wholesale — Feature PRD Index
 
-**Version:** 2.2
+**Version:** 2.3
 **Owner:** Keryx Solutions
 **Status:** Active
-**Last Updated:** 2025-11-12
+**Last Updated:** 2025-12-08
 
 ---
 
@@ -18,7 +18,7 @@ This document serves as an index to the individual Product Requirement Documents
 ### 1. Wholesale Registration
 **File:** [registration.prd](./registration.prd)
 
-**Summary:** Account-based wholesale registration flow integrated into Ecwid's `/products/account/register` page. Prefills customer data from storefront, submits to external **Registration Server** using session token authentication. Server handles all Admin REST operations (profile updates, extra fields persistence, immediate group assignment).
+**Summary:** Account-based wholesale registration + edit flow integrated into Ecwid's `/products/account/register` (non-wholesale) and `/products/account/edit` (wholesale) pages. Prefills customer data from storefront, submits to external **Registration Server** using session token authentication. Server handles all Admin REST operations (profile updates, extra fields persistence, immediate group assignment).
 
 **Current Status:** ✅ Complete — External server architecture with full persistence
 
@@ -27,15 +27,14 @@ This document serves as an index to the individual Product Requirement Documents
 - **Server:** Admin REST operations, group assignment, idempotency
 
 **Key Features:**
-- Custom registration form injection on account pages
-- Prefill from `Ecwid.Customer.get()`
-- Submit to external Registration Server at `REG_SERVER_URL/api/register`
-- Session token authentication (Bearer token)
-- Idempotency support with `Idempotency-Key` header
+- Custom registration form injection on account pages (register for non-wholesale, edit for wholesale)
+- Access rules: guests redirected to `/account`; non-wholesale blocked from edit; wholesale blocked from register
+- Mode-specific UX: email shown read-only in register, hidden in edit; button text Register vs Save; success banners differ and edit redirects to `/products/account`
+- Prefill from `Ecwid.Customer.get()` and extra field UI metadata from `Ecwid.getAppPublicConfig(clientId)["extraFields"]`
+- Submit to external Registration Server at `REG_SERVER_URL/api/register` with session token (Bearer) + `Idempotency-Key`
 - Server handles: profile updates, extra fields, group assignment
-- Extra field UI metadata from `Ecwid.getAppPublicConfig(clientId)["extraFields"]`
-- Persistent success/error banners (5s, survives navigation)
-- One-time auto-redirect for non-wholesale users to registration
+- Persistent success/error banners (5s, survives navigation); one-time auto-redirect for non-wholesale users to registration
+- Account info card renders on `/products/account` with customer name/state/email
 - Telemetry tracking
 
 ---
@@ -48,12 +47,12 @@ This document serves as an index to the individual Product Requirement Documents
 **Current Status:** ✅ Complete and Production-Ready
 
 **Key Features:**
-- Client-side price hiding via CSS injection
-- Storefront config toggles (`show_price_on_items`, `show_buy_button`)
-- Wholesale membership detection via `Ecwid.Customer.get()`
-- Additional UI hiding for non-wholesale: cart links, account bag/favorites steps
+- Client-side price hiding via CSS injection (`#wholesale-hide-css`) targeting prices, buy buttons, and price filters
+- Storefront config toggles: list price + buy button behaviors and product detail price/buy visibility flags
+- Wholesale membership detection via `Ecwid.Customer.get()` (group name overrideable via `window.WHOLESALE_GROUP_NAME`)
+- Additional UI hiding for guests and non-wholesale: cart links on all pages; account bag/favorites steps on account pages
+- One-time auto-redirect helper to `/products/account/register` for logged-in non-wholesale users (`sessionStorage.wr-autoredirect`)
 - SPA-aware navigation handling
-- Session caching to prevent flicker
 
 ---
 
@@ -96,7 +95,7 @@ The following utilities are used across multiple features and should be maintain
 - **`waitForEcwidAndTokens()`** — Ensures Ecwid API readiness and returns store ID + public token
 - **`getStorefrontSessionToken()`** — Retrieves session token for external API authentication (Registration feature)
 - **`trackWholesaleEvent(name, props)`** — Telemetry tracking with deduplication
-- **`isAccountRegisterPath()`** — Detects registration route
+- **`account register/edit route helpers`** — Detects `/products/account/register` and `/products/account/edit` for access guards
 - **`removeNodeById(id)`** — Safe node removal
 
 ### Configuration
@@ -171,24 +170,9 @@ Each feature can be extracted into a standalone Ecwid app:
 
 ---
 
-## Testing Strategy
-
-### Manual Testing Checklist (All Features)
-After any changes, verify:
-- [ ] Category pages show banner with image and overlay (requires image + description)
-- [ ] Product pages show tags (requires TAGS attribute values)
-- [ ] Guests see no prices or buy buttons
-- [ ] Logged-in non-wholesale users see prices hidden and registration banner
-- [ ] Logged-in wholesale users see prices and no banner
-- [ ] `/products/account/register` loads form with prefilled data
-- [ ] Form submission saves customer data (check Network tab)
-- [ ] Console shows no errors during navigation
-- [ ] All telemetry events fire correctly
-
-### Automated Testing (Future)
-- **Unit tests:** Routing helpers, extra field normalization, telemetry deduplication
-- **Integration tests:** API mocking, DOM injection, SPA navigation
-- **E2E tests (Playwright):** Full user flows on staging store
+## Testing
+- Primary test guide: [../TESTING.md](../TESTING.md) — consolidated suites covering gating, registration (with persistent banners + auto-redirect), category banners, and product tags.
+- Legacy testing docs (`TESTING_STRATEGY.md`, `E2E_TESTING_GUIDE.md`) have been merged into the single guide above.
 
 ---
 
@@ -231,14 +215,17 @@ After any changes, verify:
 
 ```
 docs/
-├── wholesale-registration-master.prd  # This index file
+├── index.prd                          # This index file
 ├── registration.prd                   # Wholesale registration flow
 ├── wholesale-gating.prd               # Price visibility control
 ├── category-banners.prd               # Category hero banners
 ├── product-tags.prd                   # Product tag display
-├── exploration.md                     # Technical research notes
-├── exploration_extrafields.md         # Extra fields implementation research
-└── IMPLEMENTATION_SUMMARY.md          # Implementation history
+└── exploration*.md                    # Research notes (archived; not maintained)
+
+root/
+├── README.md                          # Overview + deployment checklist
+├── TESTING.md                         # Consolidated testing guide (replaces TESTING_STRATEGY/E2E_TESTING_GUIDE)
+└── tasks.md                           # Open items and doc tasks
 ```
 
 ---
@@ -254,8 +241,8 @@ docs/
 
 ### Project Documentation
 - **README.md** — Feature overview and deployment checklist
-- **CLAUDE.md** — Development guide for Claude Code
-- **TESTING_STRATEGY.md** — Browser console test scenarios
+- **TESTING.md** — Consolidated testing guide (replaces TESTING_STRATEGY/E2E_TESTING_GUIDE)
+- **CLAUDE.md / AGENTS.md / GEMINI.md** — Contributor guidance for different assistants
 
 ---
 
@@ -290,6 +277,10 @@ docs/
 ---
 
 ## Version History
+
+### Version 2.3 (2025-12-08)
+- Documentation consolidation: renamed index to `index.prd`, merged testing docs into `TESTING.md`, trimmed exploration/summary references.
+- Synced PRDs with current code: category banner DOM/Font updates, gating selectors + UI hides, registration persistent banners and limited country list.
 
 ### Version 2.2 (2025-11-11)
 - **Registration & Gating Enhancements**

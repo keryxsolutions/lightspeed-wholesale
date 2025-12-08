@@ -23,8 +23,26 @@ function isAccountRegisterPath() {
   const h = window.location.hash || "";
   return p === "/products/account/register" || /#\/?account\/register/.test(h);
 }
+function isAccountEditPath() {
+  const p = window.location.pathname || "";
+  const h = window.location.hash || "";
+  return p === "/products/account/edit" || /#\/?account\/edit/.test(h);
+}
 function toAccountRegisterPath() {
   return "/products/account/register";
+}
+function toAccountEditPath() {
+  return "/products/account/edit";
+}
+function getAccountFormMode() {
+  if (isAccountRegisterPath()) return "register";
+  if (isAccountEditPath()) return "edit";
+  return null;
+}
+function isAccountRootPath() {
+  const p = window.location.pathname || "";
+  const h = window.location.hash || "";
+  return p === "/products/account" || /#\/?account$/.test(h);
 }
 
 // DOM helper
@@ -110,8 +128,8 @@ function maybeRedirectToRegistration(isLoggedIn, isWholesale) {
     // Skip if not logged in or already wholesale
     if (!isLoggedIn || isWholesale) return;
 
-    // Skip if already on registration page
-    if (isAccountRegisterPath()) return;
+    // Skip if already on registration or edit page
+    if (isAccountRegisterPath() || isAccountEditPath()) return;
 
     // Skip if already redirected this session
     if (sessionStorage.getItem("wr-autoredirect") === "1") return;
@@ -266,14 +284,14 @@ function initializeWholesalePriceVisibility() {
   // Helper: hide cart links and account steps for non-wholesale users (Version 2.2)
   function applyNonWholesaleUIHides(isWholesale, isLoggedIn) {
     try {
-      // If wholesale or guest, restore any previously hidden elements
-      if (isWholesale || !isLoggedIn) {
-        // Restore cart links
+      const shouldHide = !isWholesale || !isLoggedIn;
+
+      // Restore elements when wholesale + logged in
+      if (!shouldHide) {
         document.querySelectorAll('a[data-wr-hidden-cart-link="1"]').forEach((el) => {
           el.style.display = "";
           el.removeAttribute("data-wr-hidden-cart-link");
         });
-        // Restore account steps
         document.querySelectorAll('[data-wr-hidden-account-step="1"]').forEach((el) => {
           el.style.display = "";
           el.removeAttribute("data-wr-hidden-account-step");
@@ -281,7 +299,7 @@ function initializeWholesalePriceVisibility() {
         return;
       }
 
-      // Hide cart links for logged-in non-wholesale users
+      // Hide cart links for guests and non-wholesale users
       document.querySelectorAll('a[href*="/products/cart"]').forEach((el) => {
         if (el.getAttribute("data-wr-hidden-cart-link") !== "1") {
           el.style.display = "none";
@@ -814,6 +832,11 @@ function initializeWholesaleRegistration() {
       window.Ecwid && Ecwid.getLastLoadedPage && Ecwid.getLastLoadedPage();
     handleWholesaleRegistrationOnPage(page || { type: "UNKNOWN" });
   });
+  window.addEventListener("popstate", function () {
+    const page =
+      window.Ecwid && Ecwid.getLastLoadedPage && Ecwid.getLastLoadedPage();
+    handleWholesaleRegistrationOnPage(page || { type: "UNKNOWN" });
+  });
 }
 
 function fetchLoggedInCustomer() {
@@ -843,37 +866,73 @@ function isWholesaleByMembership(customer) {
 
 async function handleWholesaleRegistrationOnPage(page) {
   try {
-    const onReg = isAccountRegisterPath();
+    const mode = getAccountFormMode();
     const customer = await fetchLoggedInCustomer();
+    const isLoggedIn = !!customer;
+    const wholesaleStatus = isWholesaleByMembership(customer);
+    const isWholesale = wholesaleStatus === true;
+    const onAccountRoot = !mode && (isAccountRootPath() || page?.type === "ACCOUNT");
 
-    // Cleanup when leaving account/register
-    if (!onReg) {
+    const cleanupForm = () => {
       stopAccountRegisterObserver();
       const c = queryAccountBody();
       if (c) restoreAccountBody(c);
       removeNodeById("account-register-root");
+    };
+
+    // Banner visibility (hidden on register/edit form pages)
+    await renderWholesaleBanner({ customer, onFormPage: !!mode });
+
+    // Not on register/edit: ensure cleanup and optionally inject account info card
+    if (!mode) {
+      cleanupForm();
+      if (onAccountRoot) {
+        removeAccountInfoCard();
+        injectAccountInfoCard(customer, isWholesale);
+      } else {
+        removeAccountInfoCard();
+      }
+      return;
     }
 
-    // Banner visibility (hidden on account/register)
-    await renderWholesaleBanner({ customer, onReg });
-
-    // On account/register, inject our form
-    if (onReg) {
-      const ensure = () => {
-        if (queryAccountBody()) renderOrUpdateAccountRegister();
-      };
-      ensure();
-      startAccountRegisterObserver(ensure);
+    // Enforce access matrix
+    const redirectToAccount = () => {
+      window.location.href = "/products/account";
+    };
+    if (!isLoggedIn) {
+      cleanupForm();
+      redirectToAccount();
+      return;
     }
+    if (mode === "register" && isWholesale) {
+      cleanupForm();
+      redirectToAccount();
+      return;
+    }
+    if (mode === "edit" && !isWholesale) {
+      cleanupForm();
+      redirectToAccount();
+      return;
+    }
+
+    // At this point the user is allowed on the route; render form
+    cleanupForm();
+    removeAccountInfoCard();
+    const ensure = () => {
+      if (queryAccountBody()) renderOrUpdateAccountRegister(mode);
+    };
+    ensure();
+    startAccountRegisterObserver(ensure);
+    forceAccountNavigationLinks();
   } catch (e) {
     console.warn("Wholesale Reg: handler error", e);
   }
 }
 
-async function renderWholesaleBanner({ customer, onReg }) {
+async function renderWholesaleBanner({ customer, onFormPage }) {
   const id = "wholesale-registration-banner";
 
-  if (!WHOLESALE_FLAGS.ENABLE_WHOLESALE_BANNER || onReg) {
+  if (!WHOLESALE_FLAGS.ENABLE_WHOLESALE_BANNER || onFormPage) {
     removeNodeById(id);
     return;
   }
@@ -973,6 +1032,63 @@ function restoreAccountBody(container) {
   const root = document.getElementById("account-register-root");
   if (root) root.remove();
   delete container.dataset.wrHijacked;
+}
+function forceAccountNavigationLinks() {
+  try {
+    document.querySelectorAll('a[href="/products/account"]').forEach((link) => {
+      if (link.dataset.wrAccountNav === "1") return;
+      link.dataset.wrAccountNav = "1";
+      link.addEventListener("click", function (e) {
+        e.preventDefault();
+        window.location.href = "/products/account";
+      });
+    });
+  } catch (err) {
+    console.warn("Wholesale Reg: account navigation patch failed", err);
+  }
+}
+function injectAccountInfoCard(customer, isWholesale) {
+  try {
+    if (!customer || !isWholesale) return;
+    const container = document.querySelector(".ec-cart__account-info");
+    if (!container) return;
+    if (document.getElementById("wr-account-info-card")) return;
+    const name = customer?.billingPerson?.name || customer?.name || "Account";
+    const email = customer?.email || "Email unavailable";
+    const state =
+      customer?.billingPerson?.stateOrProvinceName ||
+      customer?.billingPerson?.stateOrProvinceCode ||
+      "";
+
+    const card = document.createElement("div");
+    card.id = "wr-account-info-card";
+    card.className =
+      "ec-cart__step ec-cart-step ec-cart-step--simple ec-cart-step--email";
+    card.innerHTML = `
+      <div class="ec-cart-step__block">
+        <div class="ec-cart-step__icon ec-cart-step__icon--custom">
+          <svg height="34" viewBox="0 0 34 34" width="34" xmlns="http://www.w3.org/2000/svg">
+            <path d="M6.591 29.04c2.246-3.17 6.58-3.257 7.774-4.858l.194-1.647c-2.386-1.209-4.084-3.904-4.084-7.314C10.475 10.73 13.397 8 17 8c3.604 0 6.526 2.73 6.526 7.221 0 3.38-1.64 6.058-3.995 7.286l.222 1.788c1.301 1.514 5.461 1.653 7.657 4.751" fill="none" fill-rule="evenodd" stroke="currentColor"></path>
+          </svg>
+        </div>
+        <div class="ec-cart-step__wrap">
+          <div class="ec-cart-step__title ec-header-h6">${esc(name)}${state ? " — " + esc(state) : ""}</div>
+          <div class="ec-cart-step__body">
+            <div class="ec-cart-step__section">
+              <div class="ec-cart-step__text">${esc(email)}</div>
+              <a class="ec-cart-step__change ec-link" tabindex="0" href="/products/account/edit" role="button">Edit</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    container.appendChild(card);
+  } catch (err) {
+    console.warn("Wholesale Reg: account info card inject failed", err);
+  }
+}
+function removeAccountInfoCard() {
+  removeNodeById("wr-account-info-card");
 }
 let ACCOUNT_REGISTER_OBSERVER = null;
 let RENDERING_ACC_FORM = false;
@@ -1392,7 +1508,7 @@ function getCountryOptions() {
   ];
 }
 
-async function renderOrUpdateAccountRegister() {
+async function renderOrUpdateAccountRegister(mode = "register") {
   // Prevent re-entry during rendering to avoid observer loops
   if (RENDERING_ACC_FORM) return;
   RENDERING_ACC_FORM = true;
@@ -1402,7 +1518,8 @@ async function renderOrUpdateAccountRegister() {
     if (!container) return;
     const root = hijackAccountBody(container);
     if (!root) return;
-    trackWholesaleEvent("wholesale_registration_view", {});
+    trackWholesaleEvent("wholesale_registration_view", { mode });
+    const isEditMode = mode === "edit";
     const customer = await fetchLoggedInCustomer();
     // Prefer App Storage for extra field definitions (fallback to checkout when needed)
     const defs = await loadCustomerExtraDefsSafe();
@@ -1416,11 +1533,9 @@ async function renderOrUpdateAccountRegister() {
       acceptMarketing:
         (customer?.isAcceptedMarketing ?? customer?.acceptMarketing) || false,
     };
-    root.innerHTML = `
-    <div>
-      <p><span class="ec-cart-step__mandatory-fields-notice">All fields are required unless they're explicitly marked as optional.</span></p>
-      <form id="wr-acc-form" class="ec-form" action onsubmit="return false">
-        ${formRow(
+    const emailBlock = isEditMode
+      ? ""
+      : formRow(
           formCell({
             key: "email",
             inner:
@@ -1442,7 +1557,13 @@ async function renderOrUpdateAccountRegister() {
                 `,
               }),
           })
-        )}
+        );
+    const submitLabel = isEditMode ? "Save" : "Register";
+    root.innerHTML = `
+    <div>
+      <p><span class="ec-cart-step__mandatory-fields-notice">All fields are required unless they're explicitly marked as optional.</span></p>
+      <form id="wr-acc-form" class="ec-form" action onsubmit="return false">
+        ${emailBlock}
         ${formRow(
           formCell({
             key: "country",
@@ -1575,7 +1696,7 @@ async function renderOrUpdateAccountRegister() {
                 type: "button",
                 inner: span({
                   class: "form-control__button-text",
-                  inner: "Register",
+                  inner: submitLabel,
                 }),
               }),
             }),
@@ -1585,7 +1706,7 @@ async function renderOrUpdateAccountRegister() {
       </form>
     </div>`;
     initAccountRegisterFormUI(root);
-    attachAccountRegisterHandlers(root, defs);
+    attachAccountRegisterHandlers(root, defs, mode);
   } finally {
     // Allow next render after microtask
     setTimeout(() => {
@@ -1696,7 +1817,8 @@ function toCheckoutExtraFieldDef(def, { forceSectionsFor } = {}) {
   };
 }
 
-function attachAccountRegisterHandlers(root, defs) {
+function attachAccountRegisterHandlers(root, defs, mode = "register") {
+  const isEditMode = mode === "edit";
   const getVals = () => ({
     name: document.getElementById("ec-name")?.value.trim() || "",
     phone: document.getElementById("ec-phone")?.value.trim() || "",
@@ -1781,7 +1903,7 @@ function attachAccountRegisterHandlers(root, defs) {
       return;
     }
 
-    trackWholesaleEvent("wholesale_registration_submit", {});
+    trackWholesaleEvent("wholesale_registration_submit", { mode });
     msg.textContent = "Saving…";
     msg.className = "form__msg";
 
@@ -1790,7 +1912,7 @@ function attachAccountRegisterHandlers(root, defs) {
       const res = await postRegistrationToServer(payload);
       // Server returns: { status, customerId, groupId }
 
-      trackWholesaleEvent("wholesale_registration_success", {});
+      trackWholesaleEvent("wholesale_registration_success", { mode });
 
       // Refresh Ecwid config to reflect updated customer group
       if (typeof Ecwid.refreshConfig === "function") {
@@ -1805,22 +1927,27 @@ function attachAccountRegisterHandlers(root, defs) {
         });
       }
 
+      const successMsg = isEditMode
+        ? "Your info has been updated."
+        : "Your wholesale registration has been submitted.";
       // Set persistent success banner (survives navigation for 5s)
-      setRegistrationBanner(
-        "success",
-        "Your wholesale registration has been submitted.",
-        5000
-      );
+      setRegistrationBanner("success", successMsg, 5000);
 
-      // Redirect to /products
       await new Promise((resolve) => setTimeout(resolve, 500));
-      // TODO: uncomment when done debugging
-      // window.location.href = "/products";
+      if (isEditMode) {
+        window.location.href = "/products/account";
+      } else {
+        // TODO: uncomment when done debugging
+        // window.location.href = "/products";
+      }
     } catch (err) {
       trackWholesaleEvent("wholesale_registration_failure", {
         error: err.message,
+        mode,
       });
-      const errorMsg = "Registration failed. " + (err?.message || "Please try again.");
+      const errorMsg =
+        (isEditMode ? "Saving info failed. " : "Registration failed. ") +
+        (err?.message || "Please try again.");
       msg.textContent = errorMsg;
       msg.className = "form__msg form__msg--error";
 

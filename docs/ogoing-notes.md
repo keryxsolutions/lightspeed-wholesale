@@ -32,6 +32,7 @@ First update .prd files and docs. Then add granular tasks to tasks.md. Finally i
 - [ ] The pages products/account/register and products/account/edit should not be available when not logged in, and redirect to /account if accessed
 - [ ] When user is logged in but not in wholesaler group, products/account/register should be accessible and products/account/edit should NOT be accessible, and redirect to /account if accessed
 - [ ] When user is logged in AND in wholesaler group, products/account/register should NOT be accessible and redirect to /account if accessed, and products/account/edit should be accessible
+- [ ] When user is logged in AND in wholesaler group, redirect to products/account after saving info, instead of redirecting to products
 
 ### Wholesale gating
 - [ ] on all account/* pages, when not wholesale, hide .ec-cart-step--bag and .ec-cart-step--favorites

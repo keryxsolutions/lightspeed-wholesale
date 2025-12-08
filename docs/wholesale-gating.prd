@@ -23,38 +23,37 @@ This feature enforces a "wholesale-only" storefront experience where pricing is 
    - Logged in, not wholesale member → Hide prices
    - Logged in, wholesale member → Show prices
 3. **Wholesale membership check:**
-   - Primary: `customer.membership.name` from `Ecwid.Customer.get()` (case-insensitive comparison)
-   - Fallback: Session cache `WHOLESALE_STATUS_CACHE` (prevents flicker on navigation)
+   - `customer.membership.name` from `Ecwid.Customer.get()` (case-insensitive)
    - Group name: `window.WHOLESALE_GROUP_NAME` (default: `"Wholesaler"`)
 
 ### Implementation Mechanism
 **When hiding prices:**
-- Inject `<style id="wholesale-hide-css">` tag with CSS to hide:
-  - Price nodes (`.ec-price-item`, `.price-display`, etc.)
-  - Buy buttons (`.form-control--button`, `.ec-cart-step__wrap`, etc.)
-  - Price filter widget (`.ec-price-filter`, `.price-controls`)
-- Set storefront config flags:
-  ```javascript
-  ec.storefront.config.show_price_on_items = false;
-  ec.storefront.config.show_buy_button = false;
-  ```
+- Inject `<style id="wholesale-hide-css">` to hide:
+  - `.details-product-purchase__controls`, `.ecwid-btn--add-to-cart`, `.ecwid-add-to-cart-button-container`, `.product-card-buy-icon`
+  - `.ecwid-productBrowser-price`, `.ecwid-price-value`
+  - Price filter widgets: `.ec-filter--price`, `.ec-filter__item--price`, `.ec-filter__item[data-filter="price"]`, `.ec-price-filter`, `.ec-filter__item--price-range`, `.ec-filter__item--price-slider`, `.ec-filter__item--price input/label/content/title`
+- Storefront config set to hide prices and buy buttons:
+  - `product_list_price_behavior = "HIDE"`
+  - `product_list_buybutton_behavior = "HIDE"`
+  - `product_details_show_product_price = false`
+  - `product_details_show_wholesale_prices = false`
+  - `product_details_show_number_of_items_in_stock = false`
+  - `product_details_show_buy_button = false`
 - Call `Ecwid.refreshConfig()` to apply changes
 
-**Additional UI Hiding (for non-wholesale):**
-- Hide cart links: All `<a href="/products/cart">` anchors
-  - Applied via inline `display: none` style
-  - Marked with `data-wr-hidden-cart-link="1"` attribute
-- Hide account bag/favorites steps on `/products/account/*` pages:
-  - Selectors: `.ec-cart-step--bag`, `.ec-cart-step--favorites`
-  - Applied via inline `display: none` style
-  - Marked with `data-wr-hidden-account-step="1"` attribute
-- Re-applied on every page load to handle SPA navigation
+**Additional UI Hiding (for guests and non-wholesale):**
+- Hide cart links: all anchors with `/products/cart` (inline `display:none`, marked `data-wr-hidden-cart-link="1"`) on every page
+- Hide account bag/favorites steps on `/products/account/*`: selectors `.ec-cart-step--bag`, `.ec-cart-step--favorites` (inline hide, marked `data-wr-hidden-account-step="1"`)
+- Re-applied on every page load to handle SPA navigation; restored for wholesale users only when eligible.
+
+**Auto-redirect helper (v2.2):**
+- `maybeRedirectToRegistration` runs during gating; if logged-in + non-wholesale + not on register route and no `sessionStorage.wr-autoredirect`, redirect once per session to `/products/account/register`.
 
 **When showing prices (wholesale members):**
-- Remove `#wholesale-hide-css` style tag
-- Set storefront config flags to `true`
+- Remove `#wholesale-hide-css`
+- Set storefront config fields listed above to show
 - Call `Ecwid.refreshConfig()`
-- Cart links and account steps remain visible (no hiding applied)
+- Restore cart links and account steps if previously hidden
 
 ### SPA Navigation Handling
 - Hooks into `Ecwid.OnPageLoaded` events
@@ -77,12 +76,6 @@ This feature enforces a "wholesale-only" storefront experience where pricing is 
   - Default: `true`
   - **Note:** Gating (price hiding) is always active; flag only controls banner
 
-### Session Cache
-- `WHOLESALE_STATUS_CACHE` — In-memory cache of wholesale status
-  - Purpose: Reduce flicker during SPA navigation
-  - Cleared: Never (session-lifetime only)
-  - Keys: `isWholesaleCustomer: boolean`
-
 ---
 
 ## 4. DOM and CSS
@@ -91,39 +84,39 @@ This feature enforces a "wholesale-only" storefront experience where pricing is 
 When prices should be hidden, the following `<style>` tag is injected with ID `wholesale-hide-css`:
 
 ```css
-/* Hide all price elements */
-.ec-price-item,
-.price-display,
-.product-details__price,
-.product-details-module__price,
-.ec-store__products-price,
-.grid__price,
-.grid-product__price,
-.grid-product__price-value {
+/* Hide price + buy controls */
+.details-product-purchase__controls,
+.ecwid-productBrowser-price,
+.ecwid-price-value,
+.ecwid-btn--add-to-cart,
+.ecwid-add-to-cart-button-container,
+.product-card-buy-icon {
   display: none !important;
 }
 
-/* Hide buy buttons and add-to-cart */
-.form-control--button,
-.ec-cart-step__wrap,
-.product-details__add-to-bag,
-.product-details-module__buy-now,
-.grid-product__buy-now {
-  display: none !important;
-}
-
-/* Hide price filter widget */
+/* Hide price filters */
+.ec-filter--price,
+.ec-filter__item--price,
+.ec-filter__item[data-filter="price"],
 .ec-price-filter,
-.price-controls,
-.filter-price {
+.ec-filter__item--price-range,
+.ec-filter__item--price-slider,
+.ec-filter__item--price input,
+.ec-filter__item--price label,
+.ec-filter__item--price .ec-filter__item-content,
+.ec-filter__item--price .ec-filter__item-title {
   display: none !important;
 }
 ```
 
 ### Config Toggles
 Modified storefront configuration:
-- `ec.storefront.config.show_price_on_items`
-- `ec.storefront.config.show_buy_button`
+- `product_list_price_behavior = "HIDE" | "SHOW"`
+- `product_list_buybutton_behavior = "HIDE" | "SHOW"`
+- `product_details_show_product_price`
+- `product_details_show_wholesale_prices`
+- `product_details_show_number_of_items_in_stock`
+- `product_details_show_buy_button`
 
 ---
 
@@ -135,6 +128,7 @@ Modified storefront configuration:
 - All prices hidden
 - All buy buttons hidden
 - Price filter widget hidden
+- Cart links hidden (anchors to `/products/cart`)
 - Can browse products, categories, and descriptions
 - Login link visible
 

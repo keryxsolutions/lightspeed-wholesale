@@ -201,3 +201,11 @@
 .ec-form__cell--continue {
   margin-top: 1em;
 }
+
+/* Account Info Card */
+#wr-account-info-card .ec-cart-step__icon--custom svg {
+  color: currentColor;
+}
+#wr-account-info-card .ec-cart-step__text {
+  word-break: break-word;
+}
