@@ -1769,7 +1769,7 @@ function attachAccountRegisterHandlers(root, defs) {
     if (!v.name) setInvalid("name", "Name is required");
     if (!v.phone) setInvalid("phone", "Phone is required");
     if (!v.companyName) setInvalid("company", "Company name is required");
-    if (!v.postalCode) setInvalid("zip", "ZIP / Postal code is required");
+    if (!v.postalCode) setInvalid("zip", "ZIP is required");
     if (!v.countryCode) setInvalid("country", "Country is required");
     else if (!validateCountryCode(v.countryCode))
       setInvalid("country", "Invalid country code");
@@ -1808,7 +1808,7 @@ function attachAccountRegisterHandlers(root, defs) {
       // Set persistent success banner (survives navigation for 5s)
       setRegistrationBanner(
         "success",
-        "Your wholesale registration has been submitted successfully!",
+        "Your wholesale registration has been submitted.",
         5000
       );
 

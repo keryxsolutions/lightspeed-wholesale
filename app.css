@@ -9,6 +9,20 @@
   z-index: initial;
 }
 
+.ins-tile--header
+  ~ .ins-tile--product-browser
+  .ec-size
+  div.ecwid-productBrowser
+  .ec-notices--top {
+  margin-top: calc(
+    (
+        var(--header-height, 0) +
+          max(var(--announcement-bar-height-from-top, 0)),
+        0
+      ) * 1px
+  );
+}
+
 /*****************************************************************************/
 /* Category Banner Styles                                                    */
 /*****************************************************************************/
@@ -180,6 +194,10 @@
 /* Registration Form Styles                                                  */
 /*****************************************************************************/
 
-.ec-form__cell--country {
+.ec-size .ec-store .ec-form__cell.ec-form__cell--country {
   display: none;
+}
+
+.ec-form__cell--continue {
+  margin-top: 1em;
 }
