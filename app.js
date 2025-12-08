@@ -1461,7 +1461,7 @@ async function renderOrUpdateAccountRegister() {
             key: "name",
             inner: textInput({
               id: "name",
-              label: "First and last name",
+              label: "Name",
               value: model.name,
               required: true,
               autocomplete: "shipping name",
@@ -1488,7 +1488,7 @@ async function renderOrUpdateAccountRegister() {
             inner: textInput({
               id: "zip",
               name: "postal-code",
-              label: "ZIP or ZIP+4",
+              label: "ZIP",
               value: model.postalCode,
               required: true,
               autocomplete: "shipping postal-code",
@@ -1528,7 +1528,7 @@ async function renderOrUpdateAccountRegister() {
                   inner: textInput({
                     id: "tax-id",
                     label: defs.tax.title || "Tax ID",
-                    required: !!defs.tax.required,
+                    required: true,
                     placeholder: defs.tax.placeholder,
                   }),
                 })
@@ -1563,17 +1563,6 @@ async function renderOrUpdateAccountRegister() {
               )
             : ""
         }
-        ${formRow(
-          formCell({
-            key: "accept-marketing",
-            inner: checkboxInput({
-              id: "accept-marketing",
-              name: "accept-marketing",
-              label: "I would like to receive marketing emails",
-              checked: model.acceptMarketing,
-            }),
-          })
-        )}
         ${formRow(
           formCell({
             key: "continue",

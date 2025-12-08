@@ -1,6 +1,15 @@
 /* Lightspeed eCom Custom App CSS - Wholesale Portal */
 
 /*****************************************************************************/
+/* Misc Global Fixes                                                         */
+/*****************************************************************************/
+
+.ins-tile--announcement-bar,
+.ins-tile--header.ins-tile--left-logo-detailed {
+  z-index: initial;
+}
+
+/*****************************************************************************/
 /* Category Banner Styles                                                    */
 /*****************************************************************************/
 .ecwid .category-banner {
@@ -165,4 +174,12 @@
 .ec-breadcrumbs a {
   color: #337ab7;
   text-decoration: underline;
+}
+
+/*****************************************************************************/
+/* Registration Form Styles                                                  */
+/*****************************************************************************/
+
+.ec-form__cell--country {
+  display: none;
 }
