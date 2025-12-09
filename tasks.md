@@ -38,6 +38,34 @@
 - [x] Refresh docs (registration.prd, wholesale-gating.prd, index.prd) for new flows and hide rules
 - [ ] Verification: exercise register + edit flows (access redirects, banners per mode), account card render/removal, and cart/account hides for guests/non-wholesale/wholesale on SPA navigation
 
+## Account Info Card & Edit Mode Enhancements (2025-12-08)
+
+### Account Info Card Updates
+- [x] Update `injectAccountInfoCard` to change edit link to `/products/account/edit`
+- [x] Update card step title to display company name instead of customer name
+- [x] Update card step text to display formatted shipping address (street, city, state, ZIP)
+- [x] Add step section for Tax ID (label and value)
+- [x] Add step section for Phone and Cell Phone (labels and values)
+- [x] Replace SVG icon with company/building style (thin outline)
+- [x] Replace class `.ec-cart-step--email` with `.ec-cart-step--address`
+
+### Edit Mode Form Enhancements
+- [x] Add State/Province field (text input with `stateOrProvinceCode` prefill)
+- [x] Add Street Address field (text input with `billingPerson.street` prefill)
+- [x] Add City field (text input with `billingPerson.city` prefill)
+- [x] Conditionally render address fields only in edit mode (not register mode)
+- [x] Update model prefill to include street, city, stateOrProvinceCode from customer data
+- [x] Update `getVals()` to capture new address fields
+- [x] Update `buildRegistrationServerPayload()` to include street, city, stateOrProvinceCode
+- [x] Add CSS rule to show country field in edit mode (hide in register mode only)
+
+### Verification
+- [ ] Test account info card displays company/address/tax/phone info correctly
+- [ ] Test edit mode form shows all address fields with prefilled data
+- [ ] Test register mode form does NOT show new address fields
+- [ ] Test form submission includes new fields in payload
+- [ ] Test country field visibility (hidden in register, shown in edit)
+
 ## Remaining Follow-Ups
 - [ ] Ensure server publishes v2 public config after extrafield changes (hash-based no-op)
 - [ ] Expand country list if business requirements change (currently US/UM/VI)

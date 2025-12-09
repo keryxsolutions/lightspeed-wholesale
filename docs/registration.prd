@@ -16,9 +16,9 @@ Inject a registration form into `/products/account/register` for logged-in, non-
 ### Routes & Access
 - Routes: `/products/account/register` and `/products/account/edit` (pathname or hash supported)
 - Access rules:
-  - Not logged in → both routes redirect to `/account`
-  - Logged-in non-wholesale → allow `register`, block `edit` (redirect `/account`)
-  - Logged-in wholesale → allow `edit`, block `register` (redirect `/account`)
+  - Not logged in → both routes redirect to `/products/account`
+  - Logged-in non-wholesale → allow `register`, block `edit` (redirect `/products/account`)
+  - Logged-in wholesale → allow `edit`, block `register` (redirect `/products/account`)
 - Auto-redirect: logged-in non-wholesale users are redirected once per session to `/products/account/register` when off the register/edit routes (session key `wr-autoredirect`).
 
 ### Page Integration & Navigation
@@ -31,21 +31,36 @@ Inject a registration form into `/products/account/register` for logged-in, non-
 
 ### Prefill Sources
 Data populated from `Ecwid.Customer.get()`:
-- Email (rendered read-only)
-- Name
-- Phone
-- Company Name
-- Postal Code
+- Email (rendered read-only in register mode)
+- Name (`billingPerson.name` or `name`)
+- Phone (`billingPerson.phone`)
+- Company Name (`billingPerson.companyName`)
+- Street Address (`billingPerson.street` or `shippingAddresses[0].person.street`)
+- City (`billingPerson.city` or `shippingAddresses[0].person.city`)
+- State/Province (`billingPerson.stateOrProvinceCode` or `shippingAddresses[0].person.stateOrProvinceCode`)
+- Postal Code (`billingPerson.postalCode`)
 - Country Code (limited to US, UM, VI — intentional constraint)
-- Accept Marketing consent
 
 ### Mode-Specific UX (Register vs Edit)
 - Register mode (`/products/account/register`): email shown read-only; submit label **"Register"**; success banner "Your wholesale registration has been submitted."; optional redirect to `/products` (currently disabled for debugging); errors reference registration.
-- Edit mode (`/products/account/edit`): email hidden; submit label **"Save"**; success banner "Your info has been updated."; redirect to `/products/account` after success; errors use "saving info" tone; payload unchanged.
-- Both modes: required field validation identical; banners persist 5s via `wr-banner` in `sessionStorage`.
+- Edit mode (`/products/account/edit`): email hidden; submit label **"Save"**; success banner "Your info has been updated."; redirect to `/products/account` after success; errors use "saving info" tone.
+- Edit mode additional fields (not shown in register mode):
+  - State/Province (select or text input based on country)
+  - Street Address (text input)
+  - City (text input)
+  - Country field is visible (CSS rule `.ec-form__cell--country` not hidden)
+- Both modes: required field validation; banners persist 5s via `wr-banner` in `sessionStorage`.
+- Tax ID is always required (Ecwid admin UI cannot set required flag on customer extra fields).
 
 ### Account Info Card (Account Landing)
-- On `/products/account`, append a custom `.ec-cart__step` under `.ec-cart__account-info` showing customer name + state + email (placeholder when unavailable).
+- On `/products/account`, append a custom `.ec-cart__step` under `.ec-cart__account-info` for wholesale users.
+- Card uses class `.ec-cart-step--address` (company/address-focused styling).
+- Step title: Company name
+- Step text: Formatted shipping address (street, city, state, ZIP, country)
+- Additional step section: Tax ID label and value
+- Additional step section: Phone and Cell Phone labels and values
+- Edit link: `/products/account/edit`
+- SVG icon: Building/company style (thin outline, consistent with Ecwid design)
 - Idempotent insert; removed/restored on SPA navigation to avoid duplicates.
 
 ### Shipping Address Note
@@ -107,13 +122,15 @@ Data populated from `Ecwid.Customer.get()`:
   "values": {
     "name": "...",
     "companyName": "...",
+    "street": "...",
+    "city": "...",
+    "stateOrProvinceCode": "...",
     "postalCode": "...",
     "countryCode": "US",
     "phone": "...",
     "cellPhone": "...",
     "taxId": "...",
-    "hear": "...",
-    "acceptMarketing": true
+    "hear": "..."
   }
 }
 ```
@@ -131,7 +148,6 @@ Data populated from `Ecwid.Customer.get()`:
 1. Validate session token and extract customer ID
 2. Update customer profile via Admin REST (`PUT /customers/{id}`)
    - `billingPerson.*` fields
-   - `acceptMarketing`
    - `taxId`
    - `contacts` array (PHONE type)
 3. Persist customer extra fields via Admin REST
@@ -246,14 +262,14 @@ This is an **intentional constraint** for the current deployment.
 
 ### Client-Side Behavior
 - ✅ Form injects on `/products/account/register` (non-wholesale) and `/products/account/edit` (wholesale)
-- ✅ Access rules enforced: not logged in → `/account`; non-wholesale blocked from edit; wholesale blocked from register
+- ✅ Access rules enforced: not logged in → `/products/account`; non-wholesale blocked from edit; wholesale blocked from register
 - ✅ Email shown read-only in register mode; hidden in edit mode
 - ✅ Name, phone, company, postal code, country prefilled from customer data; same validation rules in both modes
 - ✅ Submit button text: Register (register mode) / Save (edit mode)
 - ✅ Form persists during SPA redraws; cleans up when leaving register/edit; account navigation to `/products/account` rehydrates
 - ✅ Auto-redirect: Logged-in non-wholesale users redirected to registration page once per session (not when on edit/wholesale)
 - ✅ Telemetry events fire: `wholesale_registration_view`, `wholesale_registration_submit`, `wholesale_registration_success`, `wholesale_registration_failure`
-- ✅ Account info card renders on `/products/account` with customer name/state/email (placeholder-safe)
+- ✅ Account info card renders on `/products/account` with company name, formatted address, Tax ID, and phone/cell (placeholder-safe)
 
 ### Submission Flow
 - ✅ Client retrieves storefront session token
@@ -269,7 +285,7 @@ This is an **intentional constraint** for the current deployment.
 ### Server-Side Behavior (handled by Registration Server)
 - ✅ Server validates session token and extracts customer ID
 - ✅ Server updates customer profile via Admin REST:
-  - `name`, `billingPerson.*`, `acceptMarketing`, `taxId`, `contacts`
+  - `name`, `billingPerson.*`, `taxId`, `contacts`
 - ✅ Server persists customer extra fields:
   - Tax ID, Cell Phone, How did you hear about us?
 - ✅ Server assigns customer to wholesale group

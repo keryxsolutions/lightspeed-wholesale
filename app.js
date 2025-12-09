@@ -1053,30 +1053,63 @@ function injectAccountInfoCard(customer, isWholesale) {
     const container = document.querySelector(".ec-cart__account-info");
     if (!container) return;
     if (document.getElementById("wr-account-info-card")) return;
-    const name = customer?.billingPerson?.name || customer?.name || "Account";
-    const email = customer?.email || "Email unavailable";
-    const state =
-      customer?.billingPerson?.stateOrProvinceName ||
-      customer?.billingPerson?.stateOrProvinceCode ||
-      "";
+
+    // Extract company and address info
+    const billing = customer?.billingPerson || {};
+    const shipping = customer?.shippingAddresses?.[0]?.person || {};
+    const companyName = billing.companyName || shipping.companyName || "Company";
+    const street = billing.street || shipping.street || "";
+    const city = billing.city || shipping.city || "";
+    const state = billing.stateOrProvinceCode || shipping.stateOrProvinceCode || "";
+    const postalCode = billing.postalCode || shipping.postalCode || "";
+    const countryName = billing.countryName || shipping.countryName || "";
+
+    // Build formatted address
+    const addressParts = [street, city, state, postalCode].filter(Boolean);
+    const formattedAddress = addressParts.length > 0
+      ? addressParts.join(", ") + (countryName ? ", " + countryName : "")
+      : "Address not available";
+
+    // Extract phone numbers
+    const phone = billing.phone || shipping.phone || "";
+    // Cell phone from contacts array (MOBILE type) or extra fields
+    const cellPhone = customer?.contacts?.find(c => c.type === "MOBILE")?.value || "";
+
+    // Extract Tax ID (from taxId field or extra fields)
+    const taxId = customer?.taxId || "";
 
     const card = document.createElement("div");
     card.id = "wr-account-info-card";
     card.className =
-      "ec-cart__step ec-cart-step ec-cart-step--simple ec-cart-step--email";
+      "ec-cart__step ec-cart-step ec-cart-step--simple ec-cart-step--address";
     card.innerHTML = `
       <div class="ec-cart-step__block">
         <div class="ec-cart-step__icon ec-cart-step__icon--custom">
           <svg height="34" viewBox="0 0 34 34" width="34" xmlns="http://www.w3.org/2000/svg">
-            <path d="M6.591 29.04c2.246-3.17 6.58-3.257 7.774-4.858l.194-1.647c-2.386-1.209-4.084-3.904-4.084-7.314C10.475 10.73 13.397 8 17 8c3.604 0 6.526 2.73 6.526 7.221 0 3.38-1.64 6.058-3.995 7.286l.222 1.788c1.301 1.514 5.461 1.653 7.657 4.751" fill="none" fill-rule="evenodd" stroke="currentColor"></path>
+            <g fill="none" fill-rule="evenodd" stroke="currentColor" stroke-width="1">
+              <rect x="7" y="8" width="20" height="20" rx="1"/>
+              <line x1="7" y1="14" x2="27" y2="14"/>
+              <line x1="12" y1="8" x2="12" y2="5"/>
+              <line x1="22" y1="8" x2="22" y2="5"/>
+              <rect x="11" y="17" width="5" height="4"/>
+              <rect x="18" y="17" width="5" height="4"/>
+              <rect x="11" y="23" width="5" height="4"/>
+              <rect x="18" y="23" width="5" height="4"/>
+            </g>
           </svg>
         </div>
         <div class="ec-cart-step__wrap">
-          <div class="ec-cart-step__title ec-header-h6">${esc(name)}${state ? " — " + esc(state) : ""}</div>
+          <div class="ec-cart-step__title ec-header-h6">${esc(companyName)}</div>
           <div class="ec-cart-step__body">
             <div class="ec-cart-step__section">
-              <div class="ec-cart-step__text">${esc(email)}</div>
+              <div class="ec-cart-step__text">${esc(formattedAddress)}</div>
               <a class="ec-cart-step__change ec-link" tabindex="0" href="/products/account/edit" role="button">Edit</a>
+            </div>
+            <div class="ec-cart-step__section">
+              <div class="ec-cart-step__text"><strong>Tax ID:</strong> ${taxId ? esc(taxId) : "Not provided"}</div>
+            </div>
+            <div class="ec-cart-step__section">
+              <div class="ec-cart-step__text"><strong>Phone:</strong> ${phone ? esc(phone) : "Not provided"}${cellPhone ? " | <strong>Cell:</strong> " + esc(cellPhone) : ""}</div>
             </div>
           </div>
         </div>
@@ -1130,7 +1163,9 @@ function getCheckoutExtraFieldDefsFromEc() {
   }
 }
 /**
- * Access App Storage JSON safely. Supports both Ecwid.getAppStorageData(scope, key) and Ecwid.getAppStorageData(scope).
+ * Access App Public Config JSON safely. Uses Ecwid.getAppPublicConfig(clientId) to retrieve and parse stored config.
+ * Note: Per Ecwid docs (https://docs.ecwid.com/storefronts/get-storefront-details/get-public-app-details),
+ * getAppPublicConfig() returns a string that requires JSON.parse(). This is the documented behavior.
  */
 function getAppStorageJSON(key) {
   try {
@@ -1208,11 +1243,9 @@ function loadCustomerExtraFieldDefsFromStorage() {
   }
 }
 /**
- * Load Customer Extra Field defs with preference for App Storage; fallback to checkout-based discovery.
- */
-/**
  * Load Customer Extra Field definitions from App Storage only.
  * Server handles field mapping and persistence; client only needs labels/options for UI.
+ * Only caches successful results; returns default nulls without caching if config not yet available.
  * @returns {Promise<{tax, hear, cell}>} Field definitions or nulls
  */
 async function loadCustomerExtraDefsSafe() {
@@ -1220,8 +1253,13 @@ async function loadCustomerExtraDefsSafe() {
 
   // Load from App Storage (public/extrafields)
   const fromStorage = loadCustomerExtraFieldDefsFromStorage();
-  EXTRA_FIELD_DEFS_CACHE = fromStorage || { tax: null, hear: null, cell: null };
-  return EXTRA_FIELD_DEFS_CACHE;
+  if (fromStorage) {
+    // Only cache successful results to allow retry if config wasn't ready
+    EXTRA_FIELD_DEFS_CACHE = fromStorage;
+    return EXTRA_FIELD_DEFS_CACHE;
+  }
+  // Return default without caching so next call can retry
+  return { tax: null, hear: null, cell: null };
 }
 /**
  * Build registration payload for external server submission
@@ -1236,13 +1274,15 @@ function buildRegistrationServerPayload(values) {
     values: {
       name: values.name,
       companyName: values.companyName,
+      street: values.street || "",
+      city: values.city || "",
+      stateOrProvinceCode: values.stateOrProvinceCode || "",
       postalCode: values.postalCode,
       countryCode: values.countryCode,
       phone: values.phone,
       cellPhone: values.cellPhone || "",
       taxId: values.taxId || "",
       hear: values.hear || "",
-      acceptMarketing: !!values.acceptMarketing,
     },
   };
 }
@@ -1250,12 +1290,14 @@ function buildRegistrationServerPayload(values) {
 /**
  * POST registration to external server with idempotency and retry handling
  * @param {Object} payload - Registration payload from buildRegistrationServerPayload
+ * @param {string} [idempotencyKey] - Optional key for retries; generated if not provided
  * @returns {Promise<{status: string, customerId: number, groupId?: number}>}
  * @throws {Error} If registration fails
  */
-async function postRegistrationToServer(payload) {
+async function postRegistrationToServer(payload, idempotencyKey) {
   const token = await getStorefrontSessionToken();
   const key =
+    idempotencyKey ||
     (window.crypto && crypto.randomUUID && crypto.randomUUID()) ||
     "reg-" + Date.now() + "-" + Math.random().toString(16).slice(2);
 
@@ -1270,11 +1312,11 @@ async function postRegistrationToServer(payload) {
     credentials: "omit", // not needed for our server
   });
 
-  // Handle 202 Accepted with retry
+  // Handle 202 Accepted with retry using same idempotency key
   if (res.status === 202) {
     const retryAfter = Number(res.headers.get("Retry-After") || 2);
     await new Promise((r) => setTimeout(r, retryAfter * 1000));
-    return postRegistrationToServer(payload); // retry with same key
+    return postRegistrationToServer(payload, key);
   }
 
   // Handle errors
@@ -1523,15 +1565,19 @@ async function renderOrUpdateAccountRegister(mode = "register") {
     const customer = await fetchLoggedInCustomer();
     // Prefer App Storage for extra field definitions (fallback to checkout when needed)
     const defs = await loadCustomerExtraDefsSafe();
+    // Get address from billing or first shipping address
+    const billing = customer?.billingPerson || {};
+    const shipping = customer?.shippingAddresses?.[0]?.person || {};
     const model = {
       email: customer?.email || "",
-      name: customer?.billingPerson?.name || customer?.name || "",
-      phone: customer?.billingPerson?.phone || "",
-      companyName: customer?.billingPerson?.companyName || "",
-      postalCode: customer?.billingPerson?.postalCode || "",
-      countryCode: customer?.billingPerson?.countryCode || "US",
-      acceptMarketing:
-        (customer?.isAcceptedMarketing ?? customer?.acceptMarketing) || false,
+      name: billing.name || customer?.name || "",
+      phone: billing.phone || "",
+      companyName: billing.companyName || "",
+      street: billing.street || shipping.street || "",
+      city: billing.city || shipping.city || "",
+      stateOrProvinceCode: billing.stateOrProvinceCode || shipping.stateOrProvinceCode || "",
+      postalCode: billing.postalCode || "",
+      countryCode: billing.countryCode || "US",
     };
     const emailBlock = isEditMode
       ? ""
@@ -1560,7 +1606,7 @@ async function renderOrUpdateAccountRegister(mode = "register") {
         );
     const submitLabel = isEditMode ? "Save" : "Register";
     root.innerHTML = `
-    <div>
+    <div data-wr-mode="${mode}">
       <p><span class="ec-cart-step__mandatory-fields-notice">All fields are required unless they're explicitly marked as optional.</span></p>
       <form id="wr-acc-form" class="ec-form" action onsubmit="return false">
         ${emailBlock}
@@ -1602,6 +1648,45 @@ async function renderOrUpdateAccountRegister(mode = "register") {
             }),
           })
         )}
+        ${isEditMode ? formRow(
+          formCell({
+            key: "street",
+            inner: textInput({
+              id: "street",
+              name: "address-line1",
+              label: "Address",
+              value: model.street,
+              required: true,
+              autocomplete: "shipping address-line1",
+            }),
+          })
+        ) : ""}
+        ${isEditMode ? formRow(
+          formCell({
+            key: "city",
+            width: "6",
+            inner: textInput({
+              id: "city",
+              name: "city",
+              label: "City",
+              value: model.city,
+              required: true,
+              autocomplete: "shipping address-level2",
+            }),
+          }) +
+          formCell({
+            key: "region",
+            width: "6",
+            inner: textInput({
+              id: "region",
+              name: "region",
+              label: "Region",
+              value: model.stateOrProvinceCode,
+              required: true,
+              autocomplete: "shipping address-level1",
+            }),
+          })
+        ) : ""}
         ${formRow(
           formCell({
             key: "zip",
@@ -1823,11 +1908,11 @@ function attachAccountRegisterHandlers(root, defs, mode = "register") {
     name: document.getElementById("ec-name")?.value.trim() || "",
     phone: document.getElementById("ec-phone")?.value.trim() || "",
     companyName: document.getElementById("ec-company")?.value.trim() || "",
+    street: document.getElementById("ec-street")?.value.trim() || "",
+    city: document.getElementById("ec-city")?.value.trim() || "",
+    stateOrProvinceCode: document.getElementById("ec-region")?.value.trim() || "",
     postalCode: document.getElementById("ec-zip")?.value.trim() || "",
     countryCode: document.getElementById("ec-country")?.value || "US",
-    acceptMarketing:
-      document.getElementById("form-control__checkbox-accept-marketing")
-        ?.checked || false,
     taxId: document.getElementById("ec-tax-id")?.value.trim() || "",
     cellPhone: document.getElementById("ec-cell")?.value.trim() || "",
     hear: document.getElementById("ec-wr-hear")?.value || "",
@@ -1891,12 +1976,18 @@ function attachAccountRegisterHandlers(root, defs, mode = "register") {
     if (!v.name) setInvalid("name", "Name is required");
     if (!v.phone) setInvalid("phone", "Phone is required");
     if (!v.companyName) setInvalid("company", "Company name is required");
+    // Additional address field validation for edit mode
+    if (isEditMode) {
+      if (!v.street) setInvalid("street", "Address is required");
+      if (!v.city) setInvalid("city", "City is required");
+      if (!v.stateOrProvinceCode) setInvalid("region", "Region is required");
+    }
     if (!v.postalCode) setInvalid("zip", "ZIP is required");
     if (!v.countryCode) setInvalid("country", "Country is required");
     else if (!validateCountryCode(v.countryCode))
       setInvalid("country", "Invalid country code");
-    if (defs.tax?.required && !v.taxId)
-      setInvalid("tax-id", "Tax ID is required");
+    // Tax ID is always required (admin UI cannot set required flag on extra fields)
+    if (!v.taxId) setInvalid("tax-id", "Tax ID is required");
 
     if (firstInvalid) {
       firstInvalid.focus();

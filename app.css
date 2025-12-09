@@ -9,17 +9,18 @@
   z-index: initial;
 }
 
+/*
+ * Offset top notices below sticky header + announcement bar.
+ * Uses CSS max() to ensure announcement bar height is non-negative.
+ * Syntax: max(value1, value2) returns the larger; var(--name, fallback) provides default if unset.
+ */
 .ins-tile--header
   ~ .ins-tile--product-browser
   .ec-size
   div.ecwid-productBrowser
   .ec-notices--top {
   margin-top: calc(
-    (
-        var(--header-height, 0) +
-          max(var(--announcement-bar-height-from-top, 0)),
-        0
-      ) * 1px
+    (var(--header-height, 0) + max(var(--announcement-bar-height-from-top, 0), 0)) * 1px
   );
 }
 
@@ -194,8 +195,14 @@
 /* Registration Form Styles                                                  */
 /*****************************************************************************/
 
+/* Hide country field by default in registration form */
 .ec-size .ec-store .ec-form__cell.ec-form__cell--country {
   display: none;
+}
+
+/* Show country field in edit mode */
+[data-wr-mode="edit"] .ec-form__cell.ec-form__cell--country {
+  display: block;
 }
 
 .ec-form__cell--continue {
