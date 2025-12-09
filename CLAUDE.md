@@ -95,6 +95,12 @@ The application is organized into four main initialization functions called from
 - Fallback: Internal `storefrontApiClient.sessionStorageOptions.sessionToken._value`
 - Used by registration module to authenticate with Registration Server
 
+**Customer Profile Fetch** (lines 221-244):
+- `fetchCustomerProfileFromServer()` - Fetches full customer data from Registration Server
+- Calls `GET {REG_SERVER_URL}/api/customer?storeId={storeId}` with session token
+- Returns phone and extra field values (taxId, cellPhone, hear) not available from Storefront JS API
+- Used in edit mode to prefill form with stored values
+
 **API Helpers** (lines 115-135):
 - `ecwidFetchJSON(path, options)` - Makes authenticated REST calls with public token
 - Automatically adds Authorization header with Bearer token

@@ -212,6 +212,38 @@ async function getStorefrontSessionToken() {
   throw new Error("Session token unavailable");
 }
 
+/**
+ * Fetch customer profile data from registration server for edit form prefill.
+ * The Storefront JS API (Ecwid.Customer.get) doesn't include phone or extra fields.
+ * This endpoint fetches those from the Admin API via the registration server.
+ * @returns {Promise<{customerId: number, phone: string, extraFields: {taxId: string, cellPhone: string, hear: string}}|null>}
+ */
+async function fetchCustomerProfileFromServer() {
+  try {
+    const storeId = Ecwid.getOwnerId();
+    if (!storeId) {
+      console.warn("Wholesale Reg: Cannot fetch customer profile - no storeId");
+      return null;
+    }
+    const token = await getStorefrontSessionToken();
+    const url = `${REG_SERVER_URL}/api/customer?storeId=${encodeURIComponent(storeId)}`;
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!res.ok) {
+      console.warn("Wholesale Reg: Customer profile fetch failed", res.status);
+      return null;
+    }
+    return await res.json();
+  } catch (err) {
+    console.warn("Wholesale Reg: Customer profile fetch error", err);
+    return null;
+  }
+}
+
 /*****************************************************************************/
 
 function getWholesaleGroupName() {
@@ -1608,50 +1640,6 @@ function getUSStateOptions() {
   ];
 }
 
-/**
- * Map customer extra field values from customer object.
- * Searches customer.extraFields array by key or title match.
- * @param {Object} customer - Customer object from Ecwid.Customer.get()
- * @param {Object} defs - Extra field definitions { tax, hear, cell }
- * @returns {{ taxIdVal: string, hearVal: string, cellVal: string }}
- */
-function mapCustomerExtraValues(customer, defs) {
-  const result = { taxIdVal: "", hearVal: "", cellVal: "" };
-  if (!customer) return result;
-
-  const extraFields = customer.extraFields || [];
-
-  // Helper to find value by definition (match by key first, then title)
-  const findValue = (def) => {
-    if (!def) return "";
-    const defKey = def.key;
-    const defTitle = (def.title || "").toLowerCase();
-
-    for (const ef of extraFields) {
-      // Match by key if def has one
-      if (defKey && ef.key === defKey) return ef.value || "";
-      // Match by title (case-insensitive)
-      if (defTitle && (ef.title || "").toLowerCase() === defTitle) return ef.value || "";
-    }
-    return "";
-  };
-
-  // Tax ID: prefer extra field, fallback to customer.taxId
-  result.taxIdVal = findValue(defs?.tax) || customer.taxId || "";
-
-  // Cell phone: prefer extra field, fallback to contacts MOBILE type
-  result.cellVal = findValue(defs?.cell);
-  if (!result.cellVal && Array.isArray(customer.contacts)) {
-    const mobile = customer.contacts.find((c) => c.type === "MOBILE");
-    if (mobile) result.cellVal = mobile.value || "";
-  }
-
-  // "How did you hear about us?"
-  result.hearVal = findValue(defs?.hear);
-
-  return result;
-}
-
 async function renderOrUpdateAccountRegister(mode = "register") {
   // Prevent re-entry during rendering to avoid observer loops
   if (RENDERING_ACC_FORM) return;
@@ -1667,17 +1655,23 @@ async function renderOrUpdateAccountRegister(mode = "register") {
     const customer = await fetchLoggedInCustomer();
     // Prefer App Storage for extra field definitions (fallback to checkout when needed)
     const defs = await loadCustomerExtraDefsSafe();
-    // Map extra field values from customer data
-    const extraVals = mapCustomerExtraValues(customer, defs);
+
+    // In edit mode, fetch full customer data from server (includes phone + extra fields)
+    // The Storefront JS API doesn't return these fields
+    let serverProfile = null;
+    if (isEditMode) {
+      serverProfile = await fetchCustomerProfileFromServer();
+    }
+
     // Get address from billing or first shipping address
     const billing = customer?.billingPerson || {};
     const shipping = customer?.shippingAddresses?.[0]?.person || {};
-    // Phone: prefer billing, then shipping, then contacts MAIN type
-    let phone = billing.phone || shipping.phone || "";
-    if (!phone && Array.isArray(customer?.contacts)) {
-      const main = customer.contacts.find((c) => c.type === "MAIN" || c.type === "PHONE");
-      if (main) phone = main.value || "";
-    }
+
+    // Phone: prefer server data, then billing, then shipping
+    let phone = serverProfile?.phone || billing.phone || shipping.phone || "";
+
+    // Extra field values: prefer server data (has actual stored values)
+    const serverExtras = serverProfile?.extraFields || {};
     const model = {
       email: customer?.email || "",
       name: billing.name || customer?.name || "",
@@ -1688,10 +1682,10 @@ async function renderOrUpdateAccountRegister(mode = "register") {
       stateOrProvinceCode: billing.stateOrProvinceCode || shipping.stateOrProvinceCode || "",
       postalCode: billing.postalCode || "",
       countryCode: billing.countryCode || "US",
-      // Extra field values (prefilled from customer.extraFields)
-      taxId: extraVals.taxIdVal,
-      cellPhone: extraVals.cellVal,
-      hear: extraVals.hearVal,
+      // Extra field values: prefer server data, fallback to local mapping (for register mode)
+      taxId: serverExtras.taxId || "",
+      cellPhone: serverExtras.cellPhone || "",
+      hear: serverExtras.hear || "",
     };
     // Determine if state should be a dropdown (US only)
     const useStateDropdown = model.countryCode === "US";
