@@ -1550,6 +1550,108 @@ function getCountryOptions() {
   ];
 }
 
+function getUSStateOptions() {
+  return [
+    { value: "", label: "Select a state" },
+    { value: "AL", label: "Alabama" },
+    { value: "AK", label: "Alaska" },
+    { value: "AZ", label: "Arizona" },
+    { value: "AR", label: "Arkansas" },
+    { value: "CA", label: "California" },
+    { value: "CO", label: "Colorado" },
+    { value: "CT", label: "Connecticut" },
+    { value: "DE", label: "Delaware" },
+    { value: "DC", label: "District of Columbia" },
+    { value: "FL", label: "Florida" },
+    { value: "GA", label: "Georgia" },
+    { value: "HI", label: "Hawaii" },
+    { value: "ID", label: "Idaho" },
+    { value: "IL", label: "Illinois" },
+    { value: "IN", label: "Indiana" },
+    { value: "IA", label: "Iowa" },
+    { value: "KS", label: "Kansas" },
+    { value: "KY", label: "Kentucky" },
+    { value: "LA", label: "Louisiana" },
+    { value: "ME", label: "Maine" },
+    { value: "MD", label: "Maryland" },
+    { value: "MA", label: "Massachusetts" },
+    { value: "MI", label: "Michigan" },
+    { value: "MN", label: "Minnesota" },
+    { value: "MS", label: "Mississippi" },
+    { value: "MO", label: "Missouri" },
+    { value: "MT", label: "Montana" },
+    { value: "NE", label: "Nebraska" },
+    { value: "NV", label: "Nevada" },
+    { value: "NH", label: "New Hampshire" },
+    { value: "NJ", label: "New Jersey" },
+    { value: "NM", label: "New Mexico" },
+    { value: "NY", label: "New York" },
+    { value: "NC", label: "North Carolina" },
+    { value: "ND", label: "North Dakota" },
+    { value: "OH", label: "Ohio" },
+    { value: "OK", label: "Oklahoma" },
+    { value: "OR", label: "Oregon" },
+    { value: "PA", label: "Pennsylvania" },
+    { value: "PR", label: "Puerto Rico" },
+    { value: "RI", label: "Rhode Island" },
+    { value: "SC", label: "South Carolina" },
+    { value: "SD", label: "South Dakota" },
+    { value: "TN", label: "Tennessee" },
+    { value: "TX", label: "Texas" },
+    { value: "UT", label: "Utah" },
+    { value: "VT", label: "Vermont" },
+    { value: "VA", label: "Virginia" },
+    { value: "WA", label: "Washington" },
+    { value: "WV", label: "West Virginia" },
+    { value: "WI", label: "Wisconsin" },
+    { value: "WY", label: "Wyoming" },
+  ];
+}
+
+/**
+ * Map customer extra field values from customer object.
+ * Searches customer.extraFields array by key or title match.
+ * @param {Object} customer - Customer object from Ecwid.Customer.get()
+ * @param {Object} defs - Extra field definitions { tax, hear, cell }
+ * @returns {{ taxIdVal: string, hearVal: string, cellVal: string }}
+ */
+function mapCustomerExtraValues(customer, defs) {
+  const result = { taxIdVal: "", hearVal: "", cellVal: "" };
+  if (!customer) return result;
+
+  const extraFields = customer.extraFields || [];
+
+  // Helper to find value by definition (match by key first, then title)
+  const findValue = (def) => {
+    if (!def) return "";
+    const defKey = def.key;
+    const defTitle = (def.title || "").toLowerCase();
+
+    for (const ef of extraFields) {
+      // Match by key if def has one
+      if (defKey && ef.key === defKey) return ef.value || "";
+      // Match by title (case-insensitive)
+      if (defTitle && (ef.title || "").toLowerCase() === defTitle) return ef.value || "";
+    }
+    return "";
+  };
+
+  // Tax ID: prefer extra field, fallback to customer.taxId
+  result.taxIdVal = findValue(defs?.tax) || customer.taxId || "";
+
+  // Cell phone: prefer extra field, fallback to contacts MOBILE type
+  result.cellVal = findValue(defs?.cell);
+  if (!result.cellVal && Array.isArray(customer.contacts)) {
+    const mobile = customer.contacts.find((c) => c.type === "MOBILE");
+    if (mobile) result.cellVal = mobile.value || "";
+  }
+
+  // "How did you hear about us?"
+  result.hearVal = findValue(defs?.hear);
+
+  return result;
+}
+
 async function renderOrUpdateAccountRegister(mode = "register") {
   // Prevent re-entry during rendering to avoid observer loops
   if (RENDERING_ACC_FORM) return;
@@ -1565,20 +1667,34 @@ async function renderOrUpdateAccountRegister(mode = "register") {
     const customer = await fetchLoggedInCustomer();
     // Prefer App Storage for extra field definitions (fallback to checkout when needed)
     const defs = await loadCustomerExtraDefsSafe();
+    // Map extra field values from customer data
+    const extraVals = mapCustomerExtraValues(customer, defs);
     // Get address from billing or first shipping address
     const billing = customer?.billingPerson || {};
     const shipping = customer?.shippingAddresses?.[0]?.person || {};
+    // Phone: prefer billing, then shipping, then contacts MAIN type
+    let phone = billing.phone || shipping.phone || "";
+    if (!phone && Array.isArray(customer?.contacts)) {
+      const main = customer.contacts.find((c) => c.type === "MAIN" || c.type === "PHONE");
+      if (main) phone = main.value || "";
+    }
     const model = {
       email: customer?.email || "",
       name: billing.name || customer?.name || "",
-      phone: billing.phone || "",
+      phone,
       companyName: billing.companyName || "",
       street: billing.street || shipping.street || "",
       city: billing.city || shipping.city || "",
       stateOrProvinceCode: billing.stateOrProvinceCode || shipping.stateOrProvinceCode || "",
       postalCode: billing.postalCode || "",
       countryCode: billing.countryCode || "US",
+      // Extra field values (prefilled from customer.extraFields)
+      taxId: extraVals.taxIdVal,
+      cellPhone: extraVals.cellVal,
+      hear: extraVals.hearVal,
     };
+    // Determine if state should be a dropdown (US only)
+    const useStateDropdown = model.countryCode === "US";
     const emailBlock = isEditMode
       ? ""
       : formRow(
@@ -1677,14 +1793,22 @@ async function renderOrUpdateAccountRegister(mode = "register") {
           formCell({
             key: "region",
             width: "6",
-            inner: textInput({
-              id: "region",
-              name: "region",
-              label: "Region",
-              value: model.stateOrProvinceCode,
-              required: true,
-              autocomplete: "shipping address-level1",
-            }),
+            inner: useStateDropdown
+              ? selectInput({
+                  id: "region",
+                  label: "State",
+                  value: model.stateOrProvinceCode,
+                  options: getUSStateOptions(),
+                  required: true,
+                })
+              : textInput({
+                  id: "region",
+                  name: "region",
+                  label: "Region",
+                  value: model.stateOrProvinceCode,
+                  required: true,
+                  autocomplete: "shipping address-level1",
+                }),
           })
         ) : ""}
         ${formRow(
@@ -1719,6 +1843,7 @@ async function renderOrUpdateAccountRegister(mode = "register") {
                   inner: textInput({
                     id: "cell",
                     label: defs.cell.title || "Cell phone",
+                    value: model.cellPhone,
                     placeholder: defs.cell.placeholder,
                     type: "text",
                   }),
@@ -1734,6 +1859,7 @@ async function renderOrUpdateAccountRegister(mode = "register") {
                   inner: textInput({
                     id: "tax-id",
                     label: defs.tax.title || "Tax ID",
+                    value: model.taxId,
                     required: true,
                     placeholder: defs.tax.placeholder,
                   }),
@@ -1747,12 +1873,12 @@ async function renderOrUpdateAccountRegister(mode = "register") {
                 formCell({
                   key: "hear",
                   inner:
-                    // TODO: field is currently not a select type, but should be; check data
                     (defs.hear?.options?.length)
                       ? selectInput({
                           id: "wr-hear",
                           label:
                             defs.hear.title || "How did you hear about us?",
+                          value: model.hear,
                           options: defs.hear.options.map((o) => ({
                             value: o.title,
                             label: o.title,
@@ -1763,6 +1889,7 @@ async function renderOrUpdateAccountRegister(mode = "register") {
                           id: "wr-hear",
                           label:
                             defs.hear.title || "How did you hear about us?",
+                          value: model.hear,
                           placeholder: defs.hear.placeholder,
                         }),
                 })
