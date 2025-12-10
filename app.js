@@ -920,7 +920,10 @@ async function handleWholesaleRegistrationOnPage(page) {
       cleanupForm();
       if (onAccountRoot) {
         removeAccountInfoCard();
-        injectAccountInfoCard(customer, isWholesale);
+        // Fetch server profile to get extra fields (taxId, cellPhone) and phone
+        // The Storefront JS API doesn't include these values
+        const serverProfile = isWholesale ? await fetchCustomerProfileFromServer() : null;
+        injectAccountInfoCard(customer, isWholesale, serverProfile);
       } else {
         removeAccountInfoCard();
       }
@@ -1079,7 +1082,7 @@ function forceAccountNavigationLinks() {
     console.warn("Wholesale Reg: account navigation patch failed", err);
   }
 }
-function injectAccountInfoCard(customer, isWholesale) {
+function injectAccountInfoCard(customer, isWholesale, serverProfile = null) {
   try {
     if (!customer || !isWholesale) return;
     const container = document.querySelector(".ec-cart__account-info");
@@ -1102,31 +1105,36 @@ function injectAccountInfoCard(customer, isWholesale) {
       ? addressParts.join(", ") + (countryName ? ", " + countryName : "")
       : "Address not available";
 
-    // Extract phone numbers
-    const phone = billing.phone || shipping.phone || "";
-    // Cell phone from contacts array (MOBILE type) or extra fields
-    const cellPhone = customer?.contacts?.find(c => c.type === "MOBILE")?.value || "";
+    // Extract phone numbers - prefer server profile data (includes Admin API values)
+    const phone = serverProfile?.phone || billing.phone || shipping.phone || "";
+    // Cell phone from server profile extra fields, or contacts array (MOBILE type)
+    const cellPhone = serverProfile?.extraFields?.cellPhone || customer?.contacts?.find(c => c.type === "MOBILE")?.value || "";
 
-    // Extract Tax ID (from taxId field or extra fields)
-    const taxId = customer?.taxId || "";
+    // Extract Tax ID - prefer server profile extra fields
+    const taxId = serverProfile?.extraFields?.taxId || customer?.taxId || "";
 
     const card = document.createElement("div");
     card.id = "wr-account-info-card";
     card.className =
-      "ec-cart__step ec-cart-step ec-cart-step--simple ec-cart-step--address";
+      "ec-cart__step ec-cart-step ec-cart-step--simple ec-cart-step--no-action ec-cart-step--address";
     card.innerHTML = `
       <div class="ec-cart-step__block">
         <div class="ec-cart-step__icon ec-cart-step__icon--custom">
           <svg height="34" viewBox="0 0 34 34" width="34" xmlns="http://www.w3.org/2000/svg">
-            <g fill="none" fill-rule="evenodd" stroke="currentColor" stroke-width="1">
-              <rect x="7" y="8" width="20" height="20" rx="1"/>
-              <line x1="7" y1="14" x2="27" y2="14"/>
-              <line x1="12" y1="8" x2="12" y2="5"/>
-              <line x1="22" y1="8" x2="22" y2="5"/>
-              <rect x="11" y="17" width="5" height="4"/>
-              <rect x="18" y="17" width="5" height="4"/>
-              <rect x="11" y="23" width="5" height="4"/>
-              <rect x="18" y="23" width="5" height="4"/>
+            <g fill="none" fill-rule="evenodd" stroke="currentColor" stroke-width="1.5">
+              <!-- Tall building (left) -->
+              <rect x="8" y="8" width="9" height="18" rx="1"/>
+              <!-- Windows on tall building -->
+              <line x1="10" y1="11" x2="15" y2="11"/>
+              <line x1="10" y1="14" x2="15" y2="14"/>
+              <line x1="10" y1="17" x2="15" y2="17"/>
+              <line x1="10" y1="20" x2="15" y2="20"/>
+              <!-- Short building (right) -->
+              <rect x="17" y="12" width="9" height="14" rx="1"/>
+              <!-- Windows on short building -->
+              <line x1="19" y1="15" x2="24" y2="15"/>
+              <line x1="19" y1="18" x2="24" y2="18"/>
+              <line x1="19" y1="21" x2="24" y2="21"/>
             </g>
           </svg>
         </div>
@@ -1135,13 +1143,15 @@ function injectAccountInfoCard(customer, isWholesale) {
           <div class="ec-cart-step__body">
             <div class="ec-cart-step__section">
               <div class="ec-cart-step__text">${esc(formattedAddress)}</div>
-              <a class="ec-cart-step__change ec-link" tabindex="0" href="/products/account/edit" role="button">Edit</a>
             </div>
             <div class="ec-cart-step__section">
               <div class="ec-cart-step__text"><strong>Tax ID:</strong> ${taxId ? esc(taxId) : "Not provided"}</div>
             </div>
             <div class="ec-cart-step__section">
               <div class="ec-cart-step__text"><strong>Phone:</strong> ${phone ? esc(phone) : "Not provided"}${cellPhone ? " | <strong>Cell:</strong> " + esc(cellPhone) : ""}</div>
+            </div>
+            <div class="ec-cart-step__section">
+              <a class="ec-cart-step__change ec-link" tabindex="0" href="/products/account/edit" role="button">Edit</a>
             </div>
           </div>
         </div>
