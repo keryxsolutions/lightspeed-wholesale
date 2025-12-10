@@ -1152,8 +1152,6 @@ function injectAccountInfoCard(customer, isWholesale, serverProfile = null) {
             </div>` : ''}
             <div class="ec-cart-step__section">
               <div class="ec-cart-step__text"><strong>Tax ID:</strong> ${taxId ? esc(taxId) : "Not provided"}</div>
-            </div>
-            <div class="ec-cart-step__section">
               <a class="ec-cart-step__change ec-link" tabindex="0" href="/products/account/edit" role="button">Edit</a>
             </div>
           </div>
