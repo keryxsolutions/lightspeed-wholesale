@@ -1145,10 +1145,13 @@ function injectAccountInfoCard(customer, isWholesale, serverProfile = null) {
               <div class="ec-cart-step__text">${esc(formattedAddress)}</div>
             </div>
             <div class="ec-cart-step__section">
-              <div class="ec-cart-step__text"><strong>Tax ID:</strong> ${taxId ? esc(taxId) : "Not provided"}</div>
+              <div class="ec-cart-step__text"><strong>Phone:</strong> ${phone ? esc(phone) : "Not provided"}</div>
             </div>
+            ${cellPhone ? `<div class="ec-cart-step__section">
+              <div class="ec-cart-step__text"><strong>Cell:</strong> ` + esc(cellPhone) + `</div>
+            </div>` : ''}
             <div class="ec-cart-step__section">
-              <div class="ec-cart-step__text"><strong>Phone:</strong> ${phone ? esc(phone) : "Not provided"}${cellPhone ? " | <strong>Cell:</strong> " + esc(cellPhone) : ""}</div>
+              <div class="ec-cart-step__text"><strong>Tax ID:</strong> ${taxId ? esc(taxId) : "Not provided"}</div>
             </div>
             <div class="ec-cart-step__section">
               <a class="ec-cart-step__change ec-link" tabindex="0" href="/products/account/edit" role="button">Edit</a>
