@@ -11,7 +11,7 @@
 }
 
 .ins-tile--header.ins-tile--left-logo-detailed.ins-tile--open-menu .ins-header {
-  z-index: 1;
+  z-index: 10;
 }
 
 /*
@@ -317,6 +317,11 @@
     width: 100%;
   }
 }
+@media screen and (min-width: 700px) and (max-width: 899px) {
+  .ins-tile--header.ins-tile--left-logo-detailed .ins-header__icon--burger {
+    order: 1;
+  }
+}
 
 /*****************************************************************************/
 /* Global Wholesale Banner                                                   */
@@ -474,6 +479,9 @@
 
 .ins-tile--cover {
   padding: 0;
+}
+.ins-tile__headline {
+  position: relative;
 }
 .ins-tile__headline::before {
   background: #463d52;
