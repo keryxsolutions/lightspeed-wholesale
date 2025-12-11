@@ -10,6 +10,10 @@
   z-index: initial;
 }
 
+.ins-tile--header.ins-tile--left-logo-detailed.ins-tile--open-menu .ins-header {
+  z-index: 1;
+}
+
 /*
  * Offset top notices below sticky header + announcement bar.
  * Uses CSS max() to ensure announcement bar height is non-negative.
@@ -52,10 +56,12 @@
 
 .ecwid .category-banner {
   /* Padding on .ins-tile--product-browser */
-  --page-padding: calc(env(safe-area-inset-right) + var(--global-tile-padding));
+  --page-padding: calc(
+    env(safe-area-inset-right) + var(--global-tile-padding) * 1px
+  );
   /* Actual width of .ins-tile__wrap */
   --section-width: min(
-    var(--global-tile-max-width),
+    var(--global-tile-max-width) * 1px,
     100vw - var(--page-padding) * 2
   );
   /* Margin on .ins-tile__wrap (calculated from page padding and section width) */
@@ -258,7 +264,7 @@
   margin: 0 15px;
 }
 .ins-header__wholesale > a {
-  background-color: #463D52;
+  background-color: #463d52;
   border-radius: 9999px;
   color: white;
   display: inline-block;
@@ -275,17 +281,39 @@
   left: 0;
   opacity: 0;
   border-radius: var(--button-radius);
-  background-color: hsla(0, 0%, clamp(0%, (var(--button-color-l) - 60%) * -100, 100%), .15);
-  transition: opacity .12s ease 0s;
+  background-color: hsla(
+    0,
+    0%,
+    clamp(0%, (var(--button-color-l) - 60%) * -100, 100%),
+    0.15
+  );
+  transition: opacity 0.12s ease 0s;
 }
 .ins-header__wholesale > a:hover:after {
   opacity: 1;
 }
 
-@media screen and (max-width: 899px) {
+@media screen and (max-width: 499px) {
   .ins-tile {
-    --header-height-mobile: 100;
+    --header-height: 102;
+    --header-height-mobile: 60 !important;
   }
+  .ins-tile--header.ins-tile--left-logo-detailed .ins-header__inner {
+    padding-bottom: 42px;
+  }
+  .ins-header__wholesale {
+    bottom: 0;
+    width: 100vw;
+    left: 0;
+    padding: 0 20px 10px 20px;
+    position: absolute;
+  }
+  .ins-header__wholesale > a {
+    width: 100%;
+  }
+}
+
+@media screen and (max-width: 899px) {
   .ins-tile--header.ins-tile--left-logo-detailed .ins-header__right {
     flex-wrap: wrap;
   }
@@ -329,16 +357,20 @@
 .ins-tile.ins-contacts-widget .ins-contacts-widget__desktop {
   border-radius: var(--radius-phone);
 }
-.ins-tile.ins-contacts-widget.ins-contacts-widget--phone .ins-contacts-widget__chat-welcome-message__body {
+.ins-tile.ins-contacts-widget.ins-contacts-widget--phone
+  .ins-contacts-widget__chat-welcome-message__body {
   background: unset;
   padding: 0 8px;
 }
-.ins-tile.ins-contacts-widget.ins-contacts-widget--phone .ins-contacts-widget__chat-welcome-message__body:after {
+.ins-tile.ins-contacts-widget.ins-contacts-widget--phone
+  .ins-contacts-widget__chat-welcome-message__body:after {
   background: unset;
 }
 @media (min-width: 640px) {
-  .ins-tile.ins-contacts-widget.ins-contacts-widget--phone .ins-contacts-widget__button,
-  .ins-tile.ins-contacts-widget.ins-contacts-widget--phone .ins-contacts-widget__action-button {
+  .ins-tile.ins-contacts-widget.ins-contacts-widget--phone
+    .ins-contacts-widget__button,
+  .ins-tile.ins-contacts-widget.ins-contacts-widget--phone
+    .ins-contacts-widget__action-button {
     height: 40px;
     padding: 0 20px;
   }
@@ -403,8 +435,12 @@
 /* Review Block Height                                                       */
 /*****************************************************************************/
 
-#tile-customer-review-PGAE8Y .ins-tile--customer-review.ins-tile--cards.ins-tile--has-slider .ins-tile__item,
-#tile-customer-review-PGAE8Y .ins-tile--customer-review.ins-tile--cards-photo.ins-tile--has-slider .ins-tile__item {
+#tile-customer-review-PGAE8Y
+  .ins-tile--customer-review.ins-tile--cards.ins-tile--has-slider
+  .ins-tile__item,
+#tile-customer-review-PGAE8Y
+  .ins-tile--customer-review.ins-tile--cards-photo.ins-tile--has-slider
+  .ins-tile__item {
   min-height: 250px;
 }
 
@@ -413,7 +449,10 @@
 /*****************************************************************************/
 
 /* We cannot configure the column count, so we need to override it */
-.ec-size .ec-store .grid__categories--advanced[data-cols="3"] .grid-category:nth-child(n+1) {
+.ec-size
+  .ec-store
+  .grid__categories--advanced[data-cols="3"]
+  .grid-category:nth-child(n + 1) {
   width: 50%;
   aspect-ratio: 16 / 4;
 }
