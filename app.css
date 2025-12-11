@@ -295,32 +295,23 @@
 
 @media screen and (max-width: 499px) {
   .ins-tile {
-    --header-height: 102;
-    --header-height-mobile: 60 !important;
+    --header-height: 102 !important;
   }
   .ins-tile--header.ins-tile--left-logo-detailed .ins-header__inner {
     padding-bottom: 42px;
   }
-  .ins-header__wholesale {
-    bottom: 0;
-    width: 100vw;
-    left: 0;
-    padding: 0 20px 10px 20px;
-    position: absolute;
-  }
-  .ins-header__wholesale > a {
-    width: 100%;
-  }
-}
-
-@media screen and (max-width: 899px) {
   .ins-tile--header.ins-tile--left-logo-detailed .ins-header__right {
     flex-wrap: wrap;
   }
   .ins-header__wholesale {
+    bottom: 0;
     flex: 1 0 100%;
+    left: 0;
     margin: 0;
+    padding: 0 20px 10px 20px;
+    position: absolute;
     text-align: center;
+    width: 100vw;
   }
   .ins-header__wholesale > a {
     width: 100%;
