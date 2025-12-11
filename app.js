@@ -602,9 +602,10 @@ function createApiCategoryBanner(container, overlay, imageUrl) {
   // Add banner container class
   container.classList.add("category-banner-container");
 
-  // Remove any previous banner images
-  const oldBannerImg = container.querySelector(".category-banner-img-from-api");
-  if (oldBannerImg) oldBannerImg.remove();
+  // Remove any previous banners (prevents duplicate wrappers from race conditions)
+  container.querySelectorAll(".category-banner").forEach(function (wrapper) {
+    wrapper.remove();
+  });
 
   // Create the image element
   const img = document.createElement("img");

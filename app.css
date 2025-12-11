@@ -14,6 +14,10 @@
   z-index: 10;
 }
 
+.ins-header__dropdown {
+  z-index: 3;
+}
+
 /*
  * Offset top notices below sticky header + announcement bar.
  * Uses CSS max() to ensure announcement bar height is non-negative.
@@ -317,7 +321,7 @@
     width: 100%;
   }
 }
-@media screen and (min-width: 700px) and (max-width: 899px) {
+@media screen and (min-width: 499px) and (max-width: 899px) {
   .ins-tile--header.ins-tile--left-logo-detailed .ins-header__icon--burger {
     order: 1;
   }
@@ -496,6 +500,10 @@
 }
 .ins-tile__headline > span {
   position: relative;
+}
+.ins-tiles--900 .ins-tile--cover .ins-tile__wrap {
+  margin: 0;
+  padding: 0;
 }
 @media screen and (min-width: 900px) {
   .ins-tiles--900 .ins-tile--cover .ins-tile__wrap {
