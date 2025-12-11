@@ -5,7 +5,8 @@
 /*****************************************************************************/
 
 .ins-tile--announcement-bar,
-.ins-tile--header.ins-tile--left-logo-detailed {
+.ins-tile--header.ins-tile--left-logo-detailed,
+.ins-tile--product-browser {
   z-index: initial;
 }
 
@@ -20,17 +21,49 @@
   div.ecwid-productBrowser
   .ec-notices--top {
   margin-top: calc(
-    (var(--header-height, 0) + max(var(--announcement-bar-height-from-top, 0), 0)) * 1px
+    (
+        var(--header-height, 0) +
+          max(var(--announcement-bar-height-from-top, 0), 0)
+      ) * 1px
   );
 }
 
 /*****************************************************************************/
 /* Category Banner Styles                                                    */
 /*****************************************************************************/
-.ecwid .category-banner {
-  --category-banner-margin: calc(
-    (100vw - var(--global-tile-max-width) * 1px) / 2
+@media screen and (min-width: 500px) {
+  :root {
+    --global-tile-padding: 30;
+  }
+}
+@media screen and (min-width: 1200px) {
+  :root {
+    --global-tile-padding: 40;
+  }
+}
+.ins-tile--product-browser {
+  padding-right: calc(
+    env(safe-area-inset-right) + var(--global-tile-padding) * 1px
   );
+  padding-left: calc(
+    env(safe-area-inset-left) + var(--global-tile-padding) * 1px
+  );
+}
+
+.ecwid .category-banner {
+  /* Padding on .ins-tile--product-browser */
+  --page-padding: calc(env(safe-area-inset-right) + var(--global-tile-padding));
+  /* Actual width of .ins-tile__wrap */
+  --section-width: min(
+    var(--global-tile-max-width),
+    100vw - var(--page-padding) * 2
+  );
+  /* Margin on .ins-tile__wrap (calculated from page padding and section width) */
+  --section-margin: calc(
+    (100vw - var(--page-padding) * 2 - var(--section-width)) / 2
+  );
+  /* Total margin for category banner (page padding + section margin) */
+  --category-banner-margin: calc(var(--page-padding) + var(--section-margin));
 
   display: block;
   position: relative;
@@ -215,4 +248,217 @@
 }
 #wr-account-info-card .ec-cart-step__text {
   word-break: break-word;
+}
+
+/*****************************************************************************/
+/* Wholesale Login Button in Header                                          */
+/*****************************************************************************/
+
+.ins-header__wholesale {
+  margin: 0 15px;
+}
+.ins-header__wholesale > a {
+  background-color: #463D52;
+  border-radius: 9999px;
+  color: white;
+  display: inline-block;
+  padding: 0 20px;
+  position: relative;
+}
+.ins-header__wholesale > a:after {
+  content: "";
+  display: block;
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  opacity: 0;
+  border-radius: var(--button-radius);
+  background-color: hsla(0, 0%, clamp(0%, (var(--button-color-l) - 60%) * -100, 100%), .15);
+  transition: opacity .12s ease 0s;
+}
+.ins-header__wholesale > a:hover:after {
+  opacity: 1;
+}
+
+@media screen and (max-width: 899px) {
+  .ins-tile {
+    --header-height-mobile: 100;
+  }
+  .ins-tile--header.ins-tile--left-logo-detailed .ins-header__right {
+    flex-wrap: wrap;
+  }
+  .ins-header__wholesale {
+    flex: 1 0 100%;
+    margin: 0;
+    text-align: center;
+  }
+  .ins-header__wholesale > a {
+    width: 100%;
+  }
+}
+
+/*****************************************************************************/
+/* Global Wholesale Banner                                                   */
+/*****************************************************************************/
+
+@media screen and (min-width: 900px) {
+  #announcement-bar-g3Yn8u.ins-tile--announcement-bar .ins-tile__text {
+    font-size: 16px;
+    padding: 5px 0;
+  }
+}
+
+/*****************************************************************************/
+/* Call Button and Popup Styles                                              */
+/*****************************************************************************/
+
+.ins-tile.ins-contacts-widget {
+  --radius-phone: 12px;
+  --color-phone-green: #85a191;
+}
+.ins-tile.ins-contacts-widget .ins-contacts-widget__chat-header {
+  border-radius: var(--radius-phone) var(--radius-phone) 0 0;
+}
+.ins-tile.ins-contacts-widget .ins-contacts-widget__action-button {
+  border-radius: 0 0 var(--radius-phone) var(--radius-phone);
+  height: 40px;
+}
+.ins-tile.ins-contacts-widget .ins-contacts-widget__chat,
+.ins-tile.ins-contacts-widget .ins-contacts-widget__desktop {
+  border-radius: var(--radius-phone);
+}
+.ins-tile.ins-contacts-widget.ins-contacts-widget--phone .ins-contacts-widget__chat-welcome-message__body {
+  background: unset;
+  padding: 0 8px;
+}
+.ins-tile.ins-contacts-widget.ins-contacts-widget--phone .ins-contacts-widget__chat-welcome-message__body:after {
+  background: unset;
+}
+@media (min-width: 640px) {
+  .ins-tile.ins-contacts-widget.ins-contacts-widget--phone .ins-contacts-widget__button,
+  .ins-tile.ins-contacts-widget.ins-contacts-widget--phone .ins-contacts-widget__action-button {
+    height: 40px;
+    padding: 0 20px;
+  }
+}
+
+/*****************************************************************************/
+/* Slider Styles                                                             */
+/*****************************************************************************/
+
+.ins-tile--slider {
+  --slider-interface-bottom: 40px;
+}
+.ins-tile__slide-content-inner::before {
+  background: #463d52;
+  bottom: 0;
+  content: "";
+  display: block;
+  height: var(--slider-interface-bottom);
+  left: 0;
+  opacity: 0.6;
+  position: absolute;
+  width: 100vw;
+}
+.ins-tile--slider.ins-tile--fullscreen .ins-tile__slider-dashes {
+  bottom: var(--slider-interface-bottom);
+}
+.ins-tile--slider.ins-tile--fullscreen .ins-tile__slide-content-inner {
+  bottom: 0;
+  padding-bottom: 0;
+  position: absolute;
+  text-align: center;
+  width: 100%;
+}
+@media screen and (max-width: 899px) {
+  .ins-tile--slider.ins-tile--fullscreen .ins-tile__slider-dashes {
+    bottom: var(--slider-interface-bottom);
+  }
+}
+@media screen and (max-width: 1299px) {
+  .ins-tile--slider .ins-tile__slider-dashes,
+  .ins-tile--slider .ins-tile__control-prev,
+  .ins-tile--slider .ins-tile__control-next {
+    bottom: var(--slider-interface-bottom);
+  }
+}
+
+/*****************************************************************************/
+/* Spirit Inspired Collections Title Centering                               */
+/*****************************************************************************/
+
+#tile-image-gallery-hX5JTT .col-span-8 {
+  grid-column: span 12 / span 12;
+}
+#tile-image-gallery-hX5JTT .col-span-8 h2 {
+  text-align: center;
+}
+#tile-image-gallery-hX5JTT .col-span-4 {
+  display: none;
+}
+
+/*****************************************************************************/
+/* Review Block Height                                                       */
+/*****************************************************************************/
+
+#tile-customer-review-PGAE8Y .ins-tile--customer-review.ins-tile--cards.ins-tile--has-slider .ins-tile__item,
+#tile-customer-review-PGAE8Y .ins-tile--customer-review.ins-tile--cards-photo.ins-tile--has-slider .ins-tile__item {
+  min-height: 250px;
+}
+
+/*****************************************************************************/
+/* Category Page Column Override                                             */
+/*****************************************************************************/
+
+/* We cannot configure the column count, so we need to override it */
+.ec-size .ec-store .grid__categories--advanced[data-cols="3"] .grid-category:nth-child(n+1) {
+  width: 50%;
+  aspect-ratio: 16 / 4;
+}
+.ec-size .ec-store .grid__categories--advanced[data-items="3"] {
+  justify-content: left;
+}
+
+/*****************************************************************************/
+/* Product List Page Filters Area                                            */
+/*****************************************************************************/
+
+.ec-size.ec-size--s .ec-store .ec-horizontal-filters__pills--container,
+.ec-size.ec-size--l .ec-store .ec-horizontal-filters__pills--container {
+  border-top: 1px solid #676767;
+  margin-top: 10px;
+  padding-top: 10px;
+}
+.ec-horizontal-filters__pills-title {
+  display: none;
+}
+
+/*****************************************************************************/
+/* Cover Tile Title Styles                                                   */
+/*****************************************************************************/
+
+.ins-tile--cover {
+  padding: 0;
+}
+.ins-tile__headline::before {
+  background: #463d52;
+  bottom: 0;
+  content: "";
+  display: block;
+  height: 100%;
+  left: 0;
+  opacity: 0.6;
+  position: absolute;
+  width: 100vw;
+}
+.ins-tile__headline > span {
+  position: relative;
+}
+@media screen and (min-width: 900px) {
+  .ins-tiles--900 .ins-tile--cover .ins-tile__wrap {
+    margin: 0;
+    padding: 0;
+  }
 }

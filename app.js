@@ -258,6 +258,53 @@ function getWholesaleGroupName() {
 /* removed legacy Admin REST registration helpers */
 
 /*****************************************************************************/
+// Wholesale Header Login Link
+/*****************************************************************************/
+
+/**
+ * Inject "Login for Wholesale Prices" link in the header for guests.
+ * Only shows when user is not logged in.
+ */
+function injectWholesaleHeaderLink() {
+  const LINK_ID = "wholesale-header-login-link";
+  
+  // Check if already exists
+  if (document.getElementById(LINK_ID)) return;
+  
+  // Find the header right section
+  const headerRight = document.querySelector("#tile-header-fcHJMd .ins-header__right");
+  if (!headerRight) return;
+  
+  // Create the link element
+  const span = document.createElement("span");
+  span.id = LINK_ID;
+  span.className = "ins-header__wholesale";
+  span.innerHTML = '<a role="button" href="/products/account">Login for Wholesale Prices</a>';
+  
+  // Append as last child
+  headerRight.appendChild(span);
+}
+
+/**
+ * Remove the wholesale header link (when user logs in)
+ */
+function removeWholesaleHeaderLink() {
+  const link = document.getElementById("wholesale-header-login-link");
+  if (link) link.remove();
+}
+
+/**
+ * Update wholesale header link visibility based on login status
+ */
+function updateWholesaleHeaderLink(isLoggedIn) {
+  if (isLoggedIn) {
+    removeWholesaleHeaderLink();
+  } else {
+    injectWholesaleHeaderLink();
+  }
+}
+
+/*****************************************************************************/
 // Wholesale Price Visibility
 /*****************************************************************************/
 
@@ -390,6 +437,9 @@ function initializeWholesalePriceVisibility() {
 
       // Apply additional UI hiding for non-wholesale users
       applyNonWholesaleUIHides(showPrices, isLoggedIn);
+
+      // Update wholesale header login link visibility
+      updateWholesaleHeaderLink(isLoggedIn);
 
       if (showPrices) {
         setWholesaleConfig(true);
