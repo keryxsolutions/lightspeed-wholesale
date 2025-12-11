@@ -372,7 +372,7 @@
 /*****************************************************************************/
 
 .ins-tile--slider {
-  --slider-interface-bottom: 40px;
+  --slider-interface-bottom: 47px;
 }
 .ins-tile__slide-content-inner::before {
   background: #463d52;
@@ -384,6 +384,9 @@
   opacity: 0.6;
   position: absolute;
   width: 100vw;
+}
+.ins-tile__slide-content-inner > .ins-tile__tagline {
+  position: relative;
 }
 .ins-tile--slider.ins-tile--fullscreen .ins-tile__slider-dashes {
   bottom: var(--slider-interface-bottom);
