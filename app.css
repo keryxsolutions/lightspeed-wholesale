@@ -380,27 +380,19 @@
 /* Slider Styles                                                             */
 /*****************************************************************************/
 
-#tile-slider-tVpoCY {
+/* Slider height offset variables */
+:root {
+  --wholesale-button-height: 42;
   --slider-offset-top: var(--header-height);
-  --wholesale-button-height: 42px;
 }
-.has-announcement-bar #tile-slider-tVpoCY {
-  --slider-offset-top: calc(
-    var(--header-height) + var(--announcement-bar-height)
-  );
+.has-announcement-bar {
+  --slider-offset-top: calc((var(--header-height) + var(--announcement-bar-height)) * 1px);
 }
-.has-wholesale-button #tile-slider-tVpoCY {
-  --slider-offset-top: calc(
-    var(--header-height) + var(--wholesale-button-height)
-  );
+.has-wholesale-button {
+  --slider-offset-top: calc((var(--header-height) + var(--wholesale-button-height)) * 1px);
 }
-.has-announcement-bar.has-wholesale-button #tile-slider-tVpoCY {
-  --slider-offset-top: calc(
-    var(--header-height) + var(--announcement-bar-height) + var(--wholesale-button-height)
-  );
-}
-.ins-tile--header:not(.ins-tile--has-opacity) + .ins-tile--slider {
-  --slider-height: calc((var(--vh) / 1 - var(--slider-offset-top)) * 1px);
+.has-announcement-bar.has-wholesale-button {
+  --slider-offset-top: calc((var(--header-height) + var(--announcement-bar-height) + var(--wholesale-button-height)) * 1px);
 }
 
 .ins-tile--slider {
