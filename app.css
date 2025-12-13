@@ -381,11 +381,22 @@
 /*****************************************************************************/
 
 #tile-slider-tVpoCY {
-  --slider-offset-top: calc(var(--header-height));
+  --slider-offset-top: var(--header-height);
+  --wholesale-button-height: 42px;
 }
-.ins-tile--announcement-bar #tile-slider-tVpoCY {
+.has-announcement-bar #tile-slider-tVpoCY {
   --slider-offset-top: calc(
     var(--header-height) + var(--announcement-bar-height)
+  );
+}
+.has-wholesale-button #tile-slider-tVpoCY {
+  --slider-offset-top: calc(
+    var(--header-height) + var(--wholesale-button-height)
+  );
+}
+.has-announcement-bar.has-wholesale-button #tile-slider-tVpoCY {
+  --slider-offset-top: calc(
+    var(--header-height) + var(--announcement-bar-height) + var(--wholesale-button-height)
   );
 }
 .ins-tile--header:not(.ins-tile--has-opacity) + .ins-tile--slider {

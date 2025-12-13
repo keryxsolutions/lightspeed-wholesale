@@ -1,5 +1,6 @@
 ---
 description: Deep bug investigation with RepoPrompt MCP tools
+model: opus
 ---
 
 # Deep Investigation Mode

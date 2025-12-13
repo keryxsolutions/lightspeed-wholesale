@@ -51,6 +51,33 @@ function removeNodeById(id) {
   if (el) el.remove();
 }
 
+// Body class helpers for layout coordination
+function setBodyClass(className, enabled) {
+  const hasClass = document.body.classList.contains(className);
+  if (enabled === hasClass) return; // No change needed
+  if (enabled) {
+    document.body.classList.add(className);
+  } else {
+    document.body.classList.remove(className);
+  }
+  // Trigger resize to recalculate slider height when layout classes change
+  window.dispatchEvent(new Event("resize"));
+}
+
+function syncAnnouncementBarClass() {
+  // Detect Instant Site announcement bar tile
+  const bar = document.querySelector(".ins-tile--announcement-bar");
+  const isVisible = bar && bar.offsetHeight > 0 && getComputedStyle(bar).display !== "none";
+  setBodyClass("has-announcement-bar", isVisible);
+}
+
+function syncWholesaleButtonClass() {
+  // Detect wholesale header login link
+  const btn = document.getElementById("wholesale-header-login-link");
+  const isVisible = btn && btn.offsetParent !== null;
+  setBodyClass("has-wholesale-button", isVisible);
+}
+
 const WHOLESALE_TELEMETRY = { sent: new Set(), max: 200 };
 function trackWholesaleEvent(name, props) {
   try {
@@ -158,6 +185,11 @@ Ecwid.OnAPILoaded.add(function () {
 
   // Initialize wholesale registration (routing, banner, page shell)
   initializeWholesaleRegistration();
+
+  // Sync body classes for layout coordination
+  // Run immediately and with delay to catch late-rendered tiles
+  syncAnnouncementBarClass();
+  setTimeout(syncAnnouncementBarClass, 500);
 });
 
 /*****************************************************************************/
@@ -302,6 +334,8 @@ function updateWholesaleHeaderLink(isLoggedIn) {
   } else {
     injectWholesaleHeaderLink();
   }
+  // Sync body class after link state changes
+  syncWholesaleButtonClass();
 }
 
 /*****************************************************************************/
@@ -458,6 +492,7 @@ function initializeWholesalePriceVisibility() {
   Ecwid.OnPageLoaded.add(function () {
     restoreRegistrationBanner(); // Restore banner on SPA navigation
     pollForCustomerAPI(updateWholesaleVisibility);
+    syncAnnouncementBarClass(); // Sync announcement bar body class
   });
 }
 

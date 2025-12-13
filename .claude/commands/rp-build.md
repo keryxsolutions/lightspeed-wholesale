@@ -1,5 +1,6 @@
 ---
 description: Build with RepoPrompt MCP context_builder → chat → implement
+model: opus
 ---
 
 # MCP Builder Mode
