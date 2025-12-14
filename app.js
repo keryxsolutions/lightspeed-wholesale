@@ -72,7 +72,21 @@ let sliderHeightObserver = null;
 function getExpectedSliderHeight() {
   const slider = document.querySelector(".ins-tile--header:not(.ins-tile--has-opacity) + .ins-tile--slider");
   if (!slider) return null;
-  return getComputedStyle(slider).getPropertyValue("--slider-height").trim() || null;
+
+  // Get raw CSS variable value and resolve it by applying to a temp element
+  const rawValue = getComputedStyle(slider).getPropertyValue("--slider-height").trim();
+  if (!rawValue) return null;
+
+  // Create temp element to resolve calc() to px
+  const temp = document.createElement("div");
+  temp.style.position = "absolute";
+  temp.style.visibility = "hidden";
+  temp.style.height = rawValue;
+  slider.appendChild(temp);
+  const computedHeight = getComputedStyle(temp).height;
+  slider.removeChild(temp);
+
+  return computedHeight;
 }
 
 function syncSliderHeight() {
@@ -91,10 +105,10 @@ function syncSliderHeight() {
 }
 
 function startSliderHeightObserver() {
-  if (sliderHeightObserver) return; // Already running
+  if (sliderHeightObserver) return true; // Already running
 
   const slider = document.querySelector(".ins-tile--header:not(.ins-tile--has-opacity) + .ins-tile--slider");
-  if (!slider) return;
+  if (!slider) return false;
 
   sliderHeightObserver = new MutationObserver(function(mutations) {
     const expectedHeight = getExpectedSliderHeight();
@@ -118,6 +132,7 @@ function startSliderHeightObserver() {
 
   // Initial sync
   syncSliderHeight();
+  return true;
 }
 
 function syncAnnouncementBarClass() {
@@ -247,8 +262,15 @@ Ecwid.OnAPILoaded.add(function () {
   syncAnnouncementBarClass();
   setTimeout(syncAnnouncementBarClass, 500);
 
-  // Start slider height observer (with delay to ensure slider is initialized)
-  setTimeout(startSliderHeightObserver, 100);
+  // Start slider height observer (with retries to ensure slider is initialized)
+  function tryStartSliderObserver(attempts) {
+    if (attempts <= 0) return;
+    const started = startSliderHeightObserver();
+    if (!started) {
+      setTimeout(function() { tryStartSliderObserver(attempts - 1); }, 200);
+    }
+  }
+  setTimeout(function() { tryStartSliderObserver(5); }, 100);
 });
 
 /*****************************************************************************/
