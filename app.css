@@ -92,22 +92,36 @@
 }
 
 .ecwid .category-banner-text {
-  align-items: center;
+  bottom: 0;
   color: white;
-  display: flex;
   font-family: var(--title-font-family), system-ui, Segoe UI, Roboto, Arial,
     sans-serif;
   font-size: 32px;
   font-weight: var(--title-font-weight);
-  height: 100%;
   left: 0;
   line-height: 1.4;
   margin: 0 auto;
-  min-height: 50px;
+  min-height: 36px;
   padding: 0 var(--category-banner-margin);
   position: absolute;
-  top: 0;
+  text-align: center;
   width: 100%;
+}
+
+.ecwid .category-banner-text::before {
+  background: #463d52;
+  bottom: 0;
+  content: "";
+  display: block;
+  height: 100%;
+  left: 0;
+  opacity: 0.6;
+  position: absolute;
+  width: 100vw;
+}
+
+.ecwid .category-banner-text > .grid__description-inner {
+  position: relative;
 }
 
 .ecwid .category-banner-text > p {
