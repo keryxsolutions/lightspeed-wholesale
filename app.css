@@ -510,10 +510,10 @@
   .grid-category:nth-child(n + 1) {
   width: 50%;
 }
-.ec-size .ec-store .grid__categories--advanced[data-items="1"],
-.ec-size .ec-store .grid__categories--advanced[data-items="2"],
+.ec-size .ec-store .grid__categories--advanced[data-cols="1"],
+.ec-size .ec-store .grid__categories--advanced[data-cols="2"],
 .ec-size .ec-store .grid__categories--advanced[data-items="3"] {
-  justify-content: left;
+  justify-content: flex-start;
 }
 
 /*****************************************************************************/
@@ -534,6 +534,26 @@
 /* Cover Tile Title Styles                                                   */
 /*****************************************************************************/
 
+.has-announcement-bar
+  .ins-tile--header:not(.ins-tile--has-opacity)
+  + .ins-tile--cover {
+  --cover-height: calc(
+    (
+        var(--vh) / var(--cover-height-divider) -
+          (var(--header-height) + var(--announcement-bar-height))
+      ) * 1px
+  );
+}
+.has-announcement-bar
+  .ins-tile--header:not(.ins-tile--has-opacity)
+  + .ins-tile--cover
+  .ins-tile__background--parallax
+  .ins-tile__image {
+  height: calc(
+    100% + (var(--header-height) + var(--announcement-bar-height)) / 4 * 1px
+  );
+}
+
 .ins-tile--cover {
   padding: 0;
 }
@@ -552,6 +572,7 @@
   width: 100vw;
 }
 .ins-tile__headline > span {
+  color: #e6e6ed;
   position: relative;
 }
 .ins-tiles--900 .ins-tile--cover .ins-tile__wrap {
