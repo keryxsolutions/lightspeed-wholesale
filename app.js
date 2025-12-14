@@ -71,11 +71,17 @@ let sliderHeightObserver = null;
 
 function getExpectedSliderHeight() {
   const slider = document.querySelector(".ins-tile--header:not(.ins-tile--has-opacity) + .ins-tile--slider");
-  if (!slider) return null;
+  if (!slider) {
+    console.log("[SliderHeight] getExpectedSliderHeight: slider not found");
+    return null;
+  }
 
   // Get raw CSS variable value and resolve it by applying to a temp element
   const rawValue = getComputedStyle(slider).getPropertyValue("--slider-height").trim();
-  if (!rawValue) return null;
+  if (!rawValue) {
+    console.log("[SliderHeight] getExpectedSliderHeight: --slider-height not set");
+    return null;
+  }
 
   // Create temp element to resolve calc() to px
   const temp = document.createElement("div");
@@ -86,29 +92,42 @@ function getExpectedSliderHeight() {
   const computedHeight = getComputedStyle(temp).height;
   slider.removeChild(temp);
 
+  console.log("[SliderHeight] getExpectedSliderHeight:", computedHeight, "from raw:", rawValue.substring(0, 50));
   return computedHeight;
 }
 
 function syncSliderHeight() {
+  console.log("[SliderHeight] syncSliderHeight called");
   const expectedHeight = getExpectedSliderHeight();
-  if (!expectedHeight) return;
+  if (!expectedHeight) {
+    console.log("[SliderHeight] syncSliderHeight: no expected height");
+    return;
+  }
 
   const slider = document.querySelector(".ins-tile--header:not(.ins-tile--has-opacity) + .ins-tile--slider");
   if (!slider) return;
 
   const slides = slider.querySelectorAll(".ins-tile__slide");
-  slides.forEach(function(slide) {
+  console.log("[SliderHeight] syncSliderHeight: found", slides.length, "slides");
+  slides.forEach(function(slide, i) {
     if (slide.style.minHeight !== expectedHeight) {
+      console.log("[SliderHeight] syncSliderHeight: updating slide", i, "from", slide.style.minHeight, "to", expectedHeight);
       slide.style.minHeight = expectedHeight;
     }
   });
 }
 
 function startSliderHeightObserver() {
+  console.log("[SliderHeight] startSliderHeightObserver called, existing:", !!sliderHeightObserver);
   if (sliderHeightObserver) return true; // Already running
 
   const slider = document.querySelector(".ins-tile--header:not(.ins-tile--has-opacity) + .ins-tile--slider");
-  if (!slider) return false;
+  if (!slider) {
+    console.log("[SliderHeight] startSliderHeightObserver: slider not found");
+    return false;
+  }
+
+  console.log("[SliderHeight] startSliderHeightObserver: slider found, setting up observer");
 
   sliderHeightObserver = new MutationObserver(function(mutations) {
     const expectedHeight = getExpectedSliderHeight();
@@ -118,6 +137,7 @@ function startSliderHeightObserver() {
       if (mutation.type === "attributes" && mutation.attributeName === "style") {
         const slide = mutation.target;
         if (slide.classList.contains("ins-tile__slide") && slide.style.minHeight !== expectedHeight) {
+          console.log("[SliderHeight] observer: updating slide from", slide.style.minHeight, "to", expectedHeight);
           slide.style.minHeight = expectedHeight;
         }
       }
@@ -126,6 +146,7 @@ function startSliderHeightObserver() {
 
   // Observe all slides for style attribute changes
   const slides = slider.querySelectorAll(".ins-tile__slide");
+  console.log("[SliderHeight] startSliderHeightObserver: observing", slides.length, "slides");
   slides.forEach(function(slide) {
     sliderHeightObserver.observe(slide, { attributes: true, attributeFilter: ["style"] });
   });
