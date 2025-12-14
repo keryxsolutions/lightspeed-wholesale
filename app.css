@@ -381,20 +381,36 @@
 /*****************************************************************************/
 
 /* Slider height offset variables */
-:root {
+.ins-tile--header:not(.ins-tile--has-opacity) + .ins-tile--slider {
   --wholesale-button-height: 42;
+  /* --header-height is only set on .ins-tile--slider, so don't put this in :root */
   --slider-offset-top: var(--header-height);
 }
-.has-announcement-bar {
-  --slider-offset-top: calc((var(--header-height) + var(--announcement-bar-height)) * 1px);
+.has-announcement-bar
+  .ins-tile--header:not(.ins-tile--has-opacity)
+  + .ins-tile--slider {
+  --slider-offset-top: calc(
+    (var(--header-height) + var(--announcement-bar-height)) * 1px
+  );
 }
-.has-wholesale-button {
-  --slider-offset-top: calc((var(--header-height) + var(--wholesale-button-height)) * 1px);
+.has-wholesale-button
+  .ins-tile--header:not(.ins-tile--has-opacity)
+  + .ins-tile--slider {
+  --slider-offset-top: calc(
+    (var(--header-height) + var(--wholesale-button-height)) * 1px
+  );
 }
-.has-announcement-bar.has-wholesale-button {
-  --slider-offset-top: calc((var(--header-height) + var(--announcement-bar-height) + var(--wholesale-button-height)) * 1px);
+.has-announcement-bar.has-wholesale-button
+  .ins-tile--header:not(.ins-tile--has-opacity)
+  + .ins-tile--slider {
+  --slider-offset-top: calc(
+    (
+        var(--header-height) + var(--announcement-bar-height) +
+          var(--wholesale-button-height)
+      ) * 1px
+  );
 }
-.ins-tile--header:not(.ins-tile--has-opacity)+.ins-tile--slider {
+.ins-tile--header:not(.ins-tile--has-opacity) + .ins-tile--slider {
   --slider-height: calc((var(--vh) / 1 - var(--slider-offset-top)) * 1px);
 }
 
