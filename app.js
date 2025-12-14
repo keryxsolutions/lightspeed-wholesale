@@ -60,101 +60,12 @@ function setBodyClass(className, enabled) {
   } else {
     document.body.classList.remove(className);
   }
-  // Sync slider height after body class change
-  syncSliderHeight();
+  // Slider height is handled via CSS !important rules that respond to body classes
 }
 
-// Slider height synchronization via MutationObserver
-// The slider JS sets inline minHeight on .ins-tile__slide based on internal state.
-// We observe style changes and override with our computed --slider-height value.
-let sliderHeightObserver = null;
-
-function getExpectedSliderHeight() {
-  const slider = document.querySelector(".ins-tile--header:not(.ins-tile--has-opacity) + .ins-tile--slider");
-  if (!slider) {
-    console.log("[SliderHeight] getExpectedSliderHeight: slider not found");
-    return null;
-  }
-
-  // Get raw CSS variable value and resolve it by applying to a temp element
-  const rawValue = getComputedStyle(slider).getPropertyValue("--slider-height").trim();
-  if (!rawValue) {
-    console.log("[SliderHeight] getExpectedSliderHeight: --slider-height not set");
-    return null;
-  }
-
-  // Create temp element to resolve calc() to px
-  const temp = document.createElement("div");
-  temp.style.position = "absolute";
-  temp.style.visibility = "hidden";
-  temp.style.height = rawValue;
-  slider.appendChild(temp);
-  const computedHeight = getComputedStyle(temp).height;
-  slider.removeChild(temp);
-
-  console.log("[SliderHeight] getExpectedSliderHeight:", computedHeight, "from raw:", rawValue.substring(0, 50));
-  return computedHeight;
-}
-
-function syncSliderHeight() {
-  console.log("[SliderHeight] syncSliderHeight called");
-  const expectedHeight = getExpectedSliderHeight();
-  if (!expectedHeight) {
-    console.log("[SliderHeight] syncSliderHeight: no expected height");
-    return;
-  }
-
-  const slider = document.querySelector(".ins-tile--header:not(.ins-tile--has-opacity) + .ins-tile--slider");
-  if (!slider) return;
-
-  const slides = slider.querySelectorAll(".ins-tile__slide");
-  console.log("[SliderHeight] syncSliderHeight: found", slides.length, "slides");
-  slides.forEach(function(slide, i) {
-    if (slide.style.minHeight !== expectedHeight) {
-      console.log("[SliderHeight] syncSliderHeight: updating slide", i, "from", slide.style.minHeight, "to", expectedHeight);
-      slide.style.minHeight = expectedHeight;
-    }
-  });
-}
-
-function startSliderHeightObserver() {
-  console.log("[SliderHeight] startSliderHeightObserver called, existing:", !!sliderHeightObserver);
-  if (sliderHeightObserver) return true; // Already running
-
-  const slider = document.querySelector(".ins-tile--header:not(.ins-tile--has-opacity) + .ins-tile--slider");
-  if (!slider) {
-    console.log("[SliderHeight] startSliderHeightObserver: slider not found");
-    return false;
-  }
-
-  console.log("[SliderHeight] startSliderHeightObserver: slider found, setting up observer");
-
-  sliderHeightObserver = new MutationObserver(function(mutations) {
-    const expectedHeight = getExpectedSliderHeight();
-    if (!expectedHeight) return;
-
-    mutations.forEach(function(mutation) {
-      if (mutation.type === "attributes" && mutation.attributeName === "style") {
-        const slide = mutation.target;
-        if (slide.classList.contains("ins-tile__slide") && slide.style.minHeight !== expectedHeight) {
-          console.log("[SliderHeight] observer: updating slide from", slide.style.minHeight, "to", expectedHeight);
-          slide.style.minHeight = expectedHeight;
-        }
-      }
-    });
-  });
-
-  // Observe all slides for style attribute changes
-  const slides = slider.querySelectorAll(".ins-tile__slide");
-  console.log("[SliderHeight] startSliderHeightObserver: observing", slides.length, "slides");
-  slides.forEach(function(slide) {
-    sliderHeightObserver.observe(slide, { attributes: true, attributeFilter: ["style"] });
-  });
-
-  // Initial sync
-  syncSliderHeight();
-  return true;
-}
+// Slider height is now handled via CSS !important rules in app.css
+// The CSS rules override inline min-height set by slider JS when body classes
+// (has-announcement-bar, has-wholesale-button) are present.
 
 function syncAnnouncementBarClass() {
   // Detect Instant Site announcement bar tile
@@ -282,16 +193,6 @@ Ecwid.OnAPILoaded.add(function () {
   // Run immediately and with delay to catch late-rendered tiles
   syncAnnouncementBarClass();
   setTimeout(syncAnnouncementBarClass, 500);
-
-  // Start slider height observer (with retries to ensure slider is initialized)
-  function tryStartSliderObserver(attempts) {
-    if (attempts <= 0) return;
-    const started = startSliderHeightObserver();
-    if (!started) {
-      setTimeout(function() { tryStartSliderObserver(attempts - 1); }, 200);
-    }
-  }
-  setTimeout(function() { tryStartSliderObserver(5); }, 100);
 });
 
 /*****************************************************************************/
