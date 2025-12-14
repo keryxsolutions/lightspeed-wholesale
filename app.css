@@ -298,13 +298,13 @@
 }
 
 @media screen and (max-width: 499px) {
-  .ins-tile {
+  .has-wholesale-button .ins-tile {
     --header-height: 102 !important;
   }
-  .ins-tile--header.ins-tile--left-logo-detailed .ins-header__inner {
+  .has-wholesale-button .ins-tile--header.ins-tile--left-logo-detailed .ins-header__inner {
     padding-bottom: 42px;
   }
-  .ins-tile--header.ins-tile--left-logo-detailed .ins-header__right {
+  .has-wholesale-button .ins-tile--header.ins-tile--left-logo-detailed .ins-header__right {
     flex-wrap: wrap;
   }
   .ins-header__wholesale {
