@@ -383,46 +383,28 @@
 /* Slider height - override min-height set by slider JS and CSS.
    The slider JS sets inline min-height on .ins-tile__slide and .ins-tile__slide-content.
    Instant Site CSS sets min-height on .ins-tile__body.
-   We must use !important to override all of these.
-   Note: --vh and --header-height are set by Instant Site */
-:root {
-  --wholesale-button-height: 42;
-}
+   We use !important to override and account for the announcement bar height.
+   Note: The wholesale button is inside the header, so it doesn't add extra height.
+   Note: --vh, --header-height, --announcement-bar-height are set by Instant Site */
 
 /* Default: no override needed (Instant Site handles it) */
 
-/* With announcement bar - override min-height */
+/* With announcement bar - subtract announcement bar height from slider */
 .has-announcement-bar
   .ins-tile--header:not(.ins-tile--has-opacity)
   + .ins-tile--slider
-  :is(.ins-tile__slide, .ins-tile__slide-content, .ins-tile__body) {
+  .ins-tile__slide,
+.has-announcement-bar
+  .ins-tile--header:not(.ins-tile--has-opacity)
+  + .ins-tile--slider
+  .ins-tile__slide-content,
+.has-announcement-bar
+  .ins-tile--header:not(.ins-tile--has-opacity)
+  + .ins-tile--slider
+  .ins-tile__body {
   min-height: calc(
     (var(--vh) / 1 - var(--header-height) - var(--announcement-bar-height)) *
       1px
-  ) !important;
-}
-
-/* With wholesale button - override min-height */
-.has-wholesale-button
-  .ins-tile--header:not(.ins-tile--has-opacity)
-  + .ins-tile--slider
-  :is(.ins-tile__slide, .ins-tile__slide-content, .ins-tile__body) {
-  min-height: calc(
-    (var(--vh) / 1 - var(--header-height) - var(--wholesale-button-height)) *
-      1px
-  ) !important;
-}
-
-/* With both - override min-height */
-.has-announcement-bar.has-wholesale-button
-  .ins-tile--header:not(.ins-tile--has-opacity)
-  + .ins-tile--slider
-  :is(.ins-tile__slide, .ins-tile__slide-content, .ins-tile__body) {
-  min-height: calc(
-    (
-        var(--vh) / 1 - var(--header-height) - var(--announcement-bar-height) -
-          var(--wholesale-button-height)
-      ) * 1px
   ) !important;
 }
 
