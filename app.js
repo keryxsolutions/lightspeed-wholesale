@@ -60,8 +60,64 @@ function setBodyClass(className, enabled) {
   } else {
     document.body.classList.remove(className);
   }
-  // Trigger resize to recalculate slider height when layout classes change
-  window.dispatchEvent(new Event("resize"));
+  // Sync slider height after body class change
+  syncSliderHeight();
+}
+
+// Slider height synchronization via MutationObserver
+// The slider JS sets inline minHeight on .ins-tile__slide based on internal state.
+// We observe style changes and override with our computed --slider-height value.
+let sliderHeightObserver = null;
+
+function getExpectedSliderHeight() {
+  const slider = document.querySelector(".ins-tile--header:not(.ins-tile--has-opacity) + .ins-tile--slider");
+  if (!slider) return null;
+  return getComputedStyle(slider).getPropertyValue("--slider-height").trim() || null;
+}
+
+function syncSliderHeight() {
+  const expectedHeight = getExpectedSliderHeight();
+  if (!expectedHeight) return;
+
+  const slider = document.querySelector(".ins-tile--header:not(.ins-tile--has-opacity) + .ins-tile--slider");
+  if (!slider) return;
+
+  const slides = slider.querySelectorAll(".ins-tile__slide");
+  slides.forEach(function(slide) {
+    if (slide.style.minHeight !== expectedHeight) {
+      slide.style.minHeight = expectedHeight;
+    }
+  });
+}
+
+function startSliderHeightObserver() {
+  if (sliderHeightObserver) return; // Already running
+
+  const slider = document.querySelector(".ins-tile--header:not(.ins-tile--has-opacity) + .ins-tile--slider");
+  if (!slider) return;
+
+  sliderHeightObserver = new MutationObserver(function(mutations) {
+    const expectedHeight = getExpectedSliderHeight();
+    if (!expectedHeight) return;
+
+    mutations.forEach(function(mutation) {
+      if (mutation.type === "attributes" && mutation.attributeName === "style") {
+        const slide = mutation.target;
+        if (slide.classList.contains("ins-tile__slide") && slide.style.minHeight !== expectedHeight) {
+          slide.style.minHeight = expectedHeight;
+        }
+      }
+    });
+  });
+
+  // Observe all slides for style attribute changes
+  const slides = slider.querySelectorAll(".ins-tile__slide");
+  slides.forEach(function(slide) {
+    sliderHeightObserver.observe(slide, { attributes: true, attributeFilter: ["style"] });
+  });
+
+  // Initial sync
+  syncSliderHeight();
 }
 
 function syncAnnouncementBarClass() {
@@ -190,6 +246,9 @@ Ecwid.OnAPILoaded.add(function () {
   // Run immediately and with delay to catch late-rendered tiles
   syncAnnouncementBarClass();
   setTimeout(syncAnnouncementBarClass, 500);
+
+  // Start slider height observer (with delay to ensure slider is initialized)
+  setTimeout(startSliderHeightObserver, 100);
 });
 
 /*****************************************************************************/

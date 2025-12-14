@@ -380,38 +380,45 @@
 /* Slider Styles                                                             */
 /*****************************************************************************/
 
-/* Slider height offset variables */
-.ins-tile--header:not(.ins-tile--has-opacity) + .ins-tile--slider {
+/* Slider height offset variables - override Instant Site's --slider-height
+   to account for announcement bar and wholesale button heights.
+   Note: --header-height is set by Instant Site on .ins-tile--slider */
+:root {
   --wholesale-button-height: 42;
-  /* --header-height is only set on .ins-tile--slider, so don't put this in :root */
-  --slider-offset-top: var(--header-height);
 }
+
+/* Default: use Instant Site's calculation (no override needed) */
+
+/* With announcement bar */
 .has-announcement-bar
   .ins-tile--header:not(.ins-tile--has-opacity)
   + .ins-tile--slider {
-  --slider-offset-top: calc(
-    (var(--header-height) + var(--announcement-bar-height)) * 1px
+  --slider-height: calc(
+    (var(--vh) / 1 - var(--header-height) - var(--announcement-bar-height)) *
+      1px
   );
 }
+
+/* With wholesale button */
 .has-wholesale-button
   .ins-tile--header:not(.ins-tile--has-opacity)
   + .ins-tile--slider {
-  --slider-offset-top: calc(
-    (var(--header-height) + var(--wholesale-button-height)) * 1px
+  --slider-height: calc(
+    (var(--vh) / 1 - var(--header-height) - var(--wholesale-button-height)) *
+      1px
   );
 }
+
+/* With both */
 .has-announcement-bar.has-wholesale-button
   .ins-tile--header:not(.ins-tile--has-opacity)
   + .ins-tile--slider {
-  --slider-offset-top: calc(
+  --slider-height: calc(
     (
-        var(--header-height) + var(--announcement-bar-height) +
+        var(--vh) / 1 - var(--header-height) - var(--announcement-bar-height) -
           var(--wholesale-button-height)
       ) * 1px
   );
-}
-.ins-tile--header:not(.ins-tile--has-opacity) + .ins-tile--slider {
-  --slider-height: calc(100vh - var(--slider-offset-top));
 }
 
 .ins-tile--slider {
