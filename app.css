@@ -380,9 +380,10 @@
 /* Slider Styles                                                             */
 /*****************************************************************************/
 
-/* Slider height - override inline min-height set by slider JS.
-   The slider JS sets min-height on .ins-tile__slide based on internal state.
-   We must use !important to override inline styles.
+/* Slider height - override min-height set by slider JS and CSS.
+   The slider JS sets inline min-height on .ins-tile__slide and .ins-tile__slide-content.
+   Instant Site CSS sets min-height on .ins-tile__body.
+   We must use !important to override all of these.
    Note: --vh and --header-height are set by Instant Site */
 :root {
   --wholesale-button-height: 42;
@@ -390,33 +391,33 @@
 
 /* Default: no override needed (Instant Site handles it) */
 
-/* With announcement bar - override min-height on slides */
+/* With announcement bar - override min-height */
 .has-announcement-bar
   .ins-tile--header:not(.ins-tile--has-opacity)
   + .ins-tile--slider
-  .ins-tile__slide {
+  :is(.ins-tile__slide, .ins-tile__slide-content, .ins-tile__body) {
   min-height: calc(
     (var(--vh) / 1 - var(--header-height) - var(--announcement-bar-height)) *
       1px
   ) !important;
 }
 
-/* With wholesale button - override min-height on slides */
+/* With wholesale button - override min-height */
 .has-wholesale-button
   .ins-tile--header:not(.ins-tile--has-opacity)
   + .ins-tile--slider
-  .ins-tile__slide {
+  :is(.ins-tile__slide, .ins-tile__slide-content, .ins-tile__body) {
   min-height: calc(
     (var(--vh) / 1 - var(--header-height) - var(--wholesale-button-height)) *
       1px
   ) !important;
 }
 
-/* With both - override min-height on slides */
+/* With both - override min-height */
 .has-announcement-bar.has-wholesale-button
   .ins-tile--header:not(.ins-tile--has-opacity)
   + .ins-tile--slider
-  .ins-tile__slide {
+  :is(.ins-tile__slide, .ins-tile__slide-content, .ins-tile__body) {
   min-height: calc(
     (
         var(--vh) / 1 - var(--header-height) - var(--announcement-bar-height) -
