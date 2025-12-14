@@ -301,10 +301,14 @@
   .has-wholesale-button .ins-tile {
     --header-height: 102 !important;
   }
-  .has-wholesale-button .ins-tile--header.ins-tile--left-logo-detailed .ins-header__inner {
+  .has-wholesale-button
+    .ins-tile--header.ins-tile--left-logo-detailed
+    .ins-header__inner {
     padding-bottom: 42px;
   }
-  .has-wholesale-button .ins-tile--header.ins-tile--left-logo-detailed .ins-header__right {
+  .has-wholesale-button
+    .ins-tile--header.ins-tile--left-logo-detailed
+    .ins-header__right {
     flex-wrap: wrap;
   }
   .ins-header__wholesale {
@@ -482,11 +486,32 @@
 /* We cannot configure the column count, so we need to override it */
 .ec-size
   .ec-store
+  .grid__categories--advanced[data-cols="1"]
+  .grid-category:nth-child(n + 1),
+.ec-size
+  .ec-store
+  .grid__categories--advanced[data-cols="2"]
+  .grid-category:nth-child(n + 1),
+.ec-size
+  .ec-store
+  .grid__categories--advanced[data-cols="3"]
+  .grid-category:nth-child(n + 1) {
+  aspect-ratio: 16 / 4;
+}
+.ec-size
+  .ec-store
+  .grid__categories--advanced[data-cols="1"][data-items="9"]
+  .grid-category:nth-child(n + 2) {
+  width: 100%;
+}
+.ec-size
+  .ec-store
   .grid__categories--advanced[data-cols="3"]
   .grid-category:nth-child(n + 1) {
   width: 50%;
-  aspect-ratio: 16 / 4;
 }
+.ec-size .ec-store .grid__categories--advanced[data-items="1"],
+.ec-size .ec-store .grid__categories--advanced[data-items="2"],
 .ec-size .ec-store .grid__categories--advanced[data-items="3"] {
   justify-content: left;
 }
