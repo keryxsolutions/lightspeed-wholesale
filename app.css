@@ -411,7 +411,7 @@
   );
 }
 .ins-tile--header:not(.ins-tile--has-opacity) + .ins-tile--slider {
-  --slider-height: calc((var(--vh) / 1 - var(--slider-offset-top)) * 1px);
+  --slider-height: calc(100vh - var(--slider-offset-top));
 }
 
 .ins-tile--slider {
