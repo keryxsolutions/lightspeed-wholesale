@@ -214,22 +214,35 @@ function replaceFeatureIconSvg() {
         <path class="cls-1" d="M847.51,875.65c24.88-2.42,49.33-6.76,73.34-13.45,49.65-13.84,92.4-38.78,129.13-74.36-1.1-.12-1.94-.29-2.78-.29-13.98,0-27.98-.44-41.93,.16-14.64,.63-29.32,1.67-43.84,3.58-27.75,3.66-54.73,10.62-81.17,19.44-42.25,14.1-82.29,32.68-120.56,54.86-4.49,2.6-8.9,5.31-13.81,8.25,1.15,.5,1.57,.82,2.01,.86,4.4,.39,8.8,.76,13.21,1.08,28.8,2.08,57.58,2.68,86.39-.12Z"/>
       `;
       
-      // Replace only the first character (assumed to be the icon character) with SVG
+      // Replace only the specific character 𖡼 with SVG
       const originalText = announcementTextElement.textContent;
-      if (originalText && originalText.length > 0) {
-        // Keep text after the first character, prepend SVG
-        const remainingText = originalText.slice(1);
+      if (originalText && originalText.includes('𖡼')) {
+        // Replace the specific character 𖡼 with SVG
+        const parts = originalText.split('𖡼');
         announcementTextElement.innerHTML = '';
-        announcementTextElement.appendChild(newSvg);
-        if (remainingText.trim()) {
-          announcementTextElement.appendChild(document.createTextNode(remainingText));
+        
+        // Add first part (before the character)
+        if (parts[0]) {
+          announcementTextElement.appendChild(document.createTextNode(parts[0]));
         }
-        console.log('Announcement bar character replaced with esprit lotus SVG');
+        
+        // Add SVG in place of the character
+        announcementTextElement.appendChild(newSvg);
+        
+        // Add remaining parts (after the character)
+        if (parts[1]) {
+          announcementTextElement.appendChild(document.createTextNode(parts[1]));
+        }
+        
+        console.log('Announcement bar 𖡼 character replaced with esprit lotus SVG');
       } else {
-        // If no text, just append SVG
+        // If the specific character is not found, just add SVG at the beginning
         announcementTextElement.innerHTML = '';
         announcementTextElement.appendChild(newSvg);
-        console.log('Announcement bar SVG added (no existing text)');
+        if (originalText && originalText.trim()) {
+          announcementTextElement.appendChild(document.createTextNode(originalText));
+        }
+        console.log('Announcement bar SVG added (𖡼 character not found)');
       }
     } else {
       console.warn('Announcement bar text element not found: #tile-announcement-bar-g3Yn8u .ins-tile__text');
