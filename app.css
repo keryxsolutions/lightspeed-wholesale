@@ -596,6 +596,7 @@
 @media screen and (min-width: 900px) {
   .ins-tiles--900 .ins-tile--cover .ins-tile__wrap {
     margin: 0;
+    max-width: unset;
     padding: 0;
   }
 }
