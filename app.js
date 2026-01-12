@@ -176,12 +176,29 @@ function maybeRedirectToRegistration(isLoggedIn, isWholesale) {
 // Replace feature icon SVG with esprit lotus
 function replaceFeatureIconSvg() {
   try {
-    const targetElement = document.querySelector('#tile-feature-list-M5ktKX .ins-tile__feature-icon svg');
-    if (!targetElement) {
+    // Replace feature list icon
+    const featureIconElement = document.querySelector('#tile-feature-list-M5ktKX .ins-tile__feature-icon svg');
+    if (featureIconElement) {
+      replaceSvgWithLotus(featureIconElement);
+    } else {
       console.warn('Feature icon SVG not found: #tile-feature-list-M5ktKX .ins-tile__feature-icon svg');
-      return;
     }
 
+    // Replace announcement bar text icon
+    const announcementIconElement = document.querySelector('#tile-announcement-bar-g3Yn8u .ins-tile__text svg');
+    if (announcementIconElement) {
+      replaceSvgWithLotus(announcementIconElement);
+    } else {
+      console.warn('Announcement bar SVG not found: #tile-announcement-bar-g3Yn8u .ins-tile__text svg');
+    }
+  } catch (error) {
+    console.error('Error replacing feature icon SVG:', error);
+  }
+}
+
+// Helper function to replace an SVG element with lotus design
+function replaceSvgWithLotus(targetElement) {
+  try {
     // Get current height to preserve it
     const currentHeight = targetElement.getAttribute('height') || targetElement.style.height || '34';
     
@@ -206,9 +223,9 @@ function replaceFeatureIconSvg() {
     
     // Replace the old SVG with the new one
     targetElement.parentNode.replaceChild(newSvg, targetElement);
-    console.log('Feature icon SVG replaced with esprit lotus');
+    console.log('SVG replaced with esprit lotus');
   } catch (error) {
-    console.error('Error replacing feature icon SVG:', error);
+    console.error('Error replacing SVG with lotus:', error);
   }
 }
 
