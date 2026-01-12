@@ -600,3 +600,33 @@
     padding: 0;
   }
 }
+
+/*****************************************************************************/
+/* Homepage Style Tweaks                                                     */
+/*****************************************************************************/
+
+#tile-feature-list-M5ktKX .ins-tile__item {
+  text-align: center;
+}
+#tile-feature-list-M5ktKX .ins-tile__feature-icon {
+  margin: 0 auto;
+}
+#tile-feature-list-M5ktKX.ins-tile--image-left .ins-tile__title,
+#tile-feature-list-M5ktKX.ins-tile--image-right .ins-tile__title {
+  text-align: center;
+}
+
+@media screen and (min-width: 500px) {
+  #tile-feature-list-M5ktKX.ins-tile--image-left .ins-tile__text-block,
+  #tile-feature-list-M5ktKX.ins-tile--image-right .ins-tile__text-block {
+    margin-top: 0;
+  }
+}
+
+@media screen and (min-width: 900px) {
+  #tile-feature-list-M5ktKX.ins-tile--image-left .ins-tile__image,
+  #tile-feature-list-M5ktKX.ins-tile--image-right .ins-tile__image {
+    min-height: 400px;
+    margin-bottom: unset;
+  }
+}

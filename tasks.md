@@ -69,3 +69,4 @@
 ## Remaining Follow-Ups
 - [ ] Ensure server publishes v2 public config after extrafield changes (hash-based no-op)
 - [ ] Expand country list if business requirements change (currently US/UM/VI)
+- [ ] Replace #tile-feature-list-M5ktKX .ins-tile__feature-icon svg with ~/Downloads/esprit lotus v6_bw.svg

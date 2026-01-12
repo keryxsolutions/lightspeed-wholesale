@@ -173,6 +173,45 @@ function maybeRedirectToRegistration(isLoggedIn, isWholesale) {
   }
 }
 
+// Replace feature icon SVG with esprit lotus
+function replaceFeatureIconSvg() {
+  try {
+    const targetElement = document.querySelector('#tile-feature-list-M5ktKX .ins-tile__feature-icon svg');
+    if (!targetElement) {
+      console.warn('Feature icon SVG not found: #tile-feature-list-M5ktKX .ins-tile__feature-icon svg');
+      return;
+    }
+
+    // Get current height to preserve it
+    const currentHeight = targetElement.getAttribute('height') || targetElement.style.height || '34';
+    
+    // Create new SVG element with esprit lotus
+    const newSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    newSvg.setAttribute('height', currentHeight);
+    newSvg.setAttribute('viewBox', '0 0 100 100');
+    newSvg.setAttribute('width', currentHeight);
+    newSvg.style.display = 'block';
+    
+    // Add esprit lotus content (simplified lotus shape)
+    newSvg.innerHTML = `
+      <path d="M50 10 C30 25, 10 40, 10 60 C10 75, 25 85, 40 85 C45 85, 48 83, 50 80 C52 83, 55 85, 60 85 C75 85, 90 75, 90 60 C90 40, 70 25, 50 10 Z" 
+            fill="currentColor" 
+            stroke="none" />
+      <path d="M50 30 C35 40, 20 50, 20 65 C20 75, 30 80, 40 80 C45 80, 48 78, 50 75 C52 78, 55 80, 60 80 C70 80, 80 75, 80 65 C80 50, 65 40, 50 30 Z" 
+            fill="none" 
+            stroke="currentColor" 
+            stroke-width="1" />
+      <circle cx="50" cy="50" r="3" fill="currentColor" />
+    `;
+    
+    // Replace the old SVG with the new one
+    targetElement.parentNode.replaceChild(newSvg, targetElement);
+    console.log('Feature icon SVG replaced with esprit lotus');
+  } catch (error) {
+    console.error('Error replacing feature icon SVG:', error);
+  }
+}
+
 Ecwid.OnAPILoaded.add(function () {
   // Restore banner on page load (if exists and not expired)
   restoreRegistrationBanner();
@@ -188,6 +227,9 @@ Ecwid.OnAPILoaded.add(function () {
 
   // Initialize wholesale registration (routing, banner, page shell)
   initializeWholesaleRegistration();
+
+  // Replace feature icon SVG with esprit lotus
+  replaceFeatureIconSvg();
 
   // Sync body classes for layout coordination
   // Run immediately and with delay to catch late-rendered tiles
