@@ -615,6 +615,10 @@
 #tile-feature-list-M5ktKX.ins-tile--image-right .ins-tile__title {
   text-align: center;
 }
+#tile-feature-list-M5ktKX.ins-tile--image-left .ins-tile__feature-title,
+#tile-feature-list-M5ktKX.ins-tile--image-right .ins-tile__feature-title {
+  margin-top: -8px;
+}
 
 @media screen and (min-width: 500px) {
   #tile-feature-list-M5ktKX.ins-tile--image-left .ins-tile__text-block,
