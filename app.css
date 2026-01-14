@@ -521,7 +521,15 @@
 .ec-size
   .ec-store
   .grid__categories--advanced[data-cols="3"]
-  .grid-category:nth-child(n + 1) {
+  .grid-category:nth-child(n + 1),
+.ec-size
+  .ec-store
+  .grid__categories--advanced[data-cols="3"][data-items="7"]
+  .grid-category:nth-child(n + 1),
+.ec-size
+  .ec-store
+  .grid__categories--advanced[data-cols="3"][data-items="7"]
+  .grid-category:nth-child(n + 5) {
   width: 50%;
 }
 .ec-size .ec-store .grid__categories--advanced[data-cols="1"],
