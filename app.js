@@ -2320,9 +2320,14 @@ function attachAccountRegisterHandlers(root, defs, mode = "register") {
     msg.className = "form__msg";
 
     // Disable button and show loader state
-    const originalBtnText = btn.textContent;
+    const btnTextSpan = btn.querySelector(".form-control__button-text");
+    const originalBtnText = btnTextSpan ? btnTextSpan.textContent : btn.textContent;
     btn.disabled = true;
-    btn.textContent = "Saving…";
+    if (btnTextSpan) {
+      btnTextSpan.textContent = "Saving…";
+    } else {
+      btn.textContent = "Saving…";
+    }
     btn.style.opacity = "0.6";
 
     try {
@@ -2360,8 +2365,13 @@ function attachAccountRegisterHandlers(root, defs, mode = "register") {
       }
     } catch (err) {
       // Restore button state on error
+      const btnTextSpan = btn.querySelector(".form-control__button-text");
       btn.disabled = false;
-      btn.textContent = originalBtnText;
+      if (btnTextSpan) {
+        btnTextSpan.textContent = originalBtnText;
+      } else {
+        btn.textContent = originalBtnText;
+      }
       btn.style.opacity = "1";
 
       trackWholesaleEvent("wholesale_registration_failure", {
