@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to coding agents when working with code in this repository.
 
 ## Project Overview
 
@@ -34,6 +34,11 @@ Each feature has a dedicated PRD with detailed specifications, acceptance criter
 This project has no build process. The files are static and hosted directly:
 - `app.js` - hosted at https://keryxsolutions.github.io/lightspeed-wholesale/app.js
 - `app.css` - hosted at https://keryxsolutions.github.io/lightspeed-wholesale/app.css
+
+**Production Store**: https://espritcreations.com/
+- Account/registration page: https://espritcreations.com/products/account
+- Login is passwordless (magic link via email)
+- No dev or staging environment — changes go straight to prod via GitHub Pages
 
 **Testing:**
 - Manual testing in browser console using snippets from `TESTING.md`

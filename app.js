@@ -2239,7 +2239,11 @@ function attachAccountRegisterHandlers(root, defs, mode = "register") {
     root
       .querySelectorAll(".form-control--error")
       .forEach((el) => el.classList.remove("form-control--error"));
-    root.querySelectorAll(".form__msg--error").forEach((el) => el.remove());
+    root.querySelectorAll(".form__msg--error").forEach((el) => {
+      // Reset the status msg in-place; removing it detaches the reference and breaks retries
+      if (el.id === "acc-input-msg") { el.textContent = ""; el.className = "form__msg"; }
+      else el.remove();
+    });
     root
       .querySelectorAll("[aria-invalid]")
       .forEach((el) => el.removeAttribute("aria-invalid"));
@@ -2315,6 +2319,12 @@ function attachAccountRegisterHandlers(root, defs, mode = "register") {
     msg.textContent = "Saving…";
     msg.className = "form__msg";
 
+    // Disable button and show loader state
+    const originalBtnText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Saving…";
+    btn.style.opacity = "0.6";
+
     try {
       const payload = buildRegistrationServerPayload(v);
       const res = await postRegistrationToServer(payload);
@@ -2345,10 +2355,15 @@ function attachAccountRegisterHandlers(root, defs, mode = "register") {
       if (isEditMode) {
         window.location.href = "/products/account";
       } else {
-        // TODO: uncomment when done debugging
-        // window.location.href = "/products";
+        // Redirect to products page after successful registration
+        window.location.href = "/products";
       }
     } catch (err) {
+      // Restore button state on error
+      btn.disabled = false;
+      btn.textContent = originalBtnText;
+      btn.style.opacity = "1";
+
       trackWholesaleEvent("wholesale_registration_failure", {
         error: err.message,
         mode,
