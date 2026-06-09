@@ -662,8 +662,12 @@ async function fetchAndCreateCategoryBanner_Prod(categoryId) {
     return;
   }
 
-  // Find the description container and overlay
-  const descContainer = document.querySelector(".grid__description");
+  // Hide Ecwid's native .grid__description so we can show description in our own block below
+  const nativeDesc = document.querySelector(".grid__description");
+  if (nativeDesc) {
+    nativeDesc.style.display = "none";
+  }
+
   // Dynamically resolve storeId and public token; wait until Ecwid API is ready
   try {
     const { storeId, publicToken } = await waitForEcwidAndTokens();
@@ -678,6 +682,10 @@ async function fetchAndCreateCategoryBanner_Prod(categoryId) {
         categoryId,
         data
       );
+      // Still insert description if available even without banner image
+      if (data && data.description) {
+        insertCategoryDescription(data.description);
+      }
       return;
     }
     // Prefer imageUrl, fallback to originalImageUrl
@@ -691,8 +699,13 @@ async function fetchAndCreateCategoryBanner_Prod(categoryId) {
     }
     // Ensure no leftover banner-container class before creation
     parentContainer.classList.remove("category-banner-container");
-    // Create or update the banner (now using parentContainer as container, descContainer as overlay)
-    createApiCategoryBanner(parentContainer, descContainer, imageUrl);
+    // Create banner with category name as overlay (not description)
+    const categoryName = data.name || "";
+    createApiCategoryBanner(parentContainer, categoryName, imageUrl);
+    // Insert description between breadcrumbs and filters
+    if (data.description) {
+      insertCategoryDescription(data.description);
+    }
   } catch (err) {
     console.error(
       "Category Banner: Failed to resolve Ecwid tokens or fetch category data.",
@@ -719,13 +732,72 @@ function cleanupCategoryBanner() {
       .forEach(function (wrapper) {
         wrapper.remove();
       });
+
+    // Remove injected category description block
+    document
+      .querySelectorAll(".category-description-seo")
+      .forEach(function (el) {
+        el.remove();
+      });
+
+    // Restore Ecwid's native .grid__description visibility
+    const nativeDesc = document.querySelector(".grid__description");
+    if (nativeDesc) {
+      nativeDesc.style.display = "";
+    }
   } catch (err) {
     console.warn("Category Banner: Cleanup error", err);
   }
 }
 
-// Build the banner using the fetched image and description overlay
-function createApiCategoryBanner(container, overlay, imageUrl) {
+/**
+ * Insert category description as a styled block between breadcrumbs and filters.
+ * Looks for the Ecwid breadcrumbs or filter area and inserts before filters.
+ */
+function insertCategoryDescription(descriptionHtml) {
+  if (!descriptionHtml) return;
+
+  // Prevent duplicate
+  if (document.querySelector(".category-description-seo")) return;
+
+  var descBlock = document.createElement("div");
+  descBlock.classList.add("category-description-seo");
+  descBlock.innerHTML = descriptionHtml;
+
+  // Strategy: insert after breadcrumbs, before filters
+  // Ecwid category page DOM (inside .ec-size .ec-store):
+  //   .ecwid-productBrowser-head  (banner area)
+  //   .ec-breadcrumbs             (breadcrumbs)
+  //   .ec-horizontal-filters      (filter bar)
+  //   .grid__products             (product grid)
+
+  var breadcrumbs = document.querySelector(
+    ".ec-size .ec-store .ec-breadcrumbs"
+  );
+  var filters = document.querySelector(
+    ".ec-size .ec-store .ec-horizontal-filters"
+  );
+
+  if (breadcrumbs) {
+    // Insert after breadcrumbs
+    breadcrumbs.parentNode.insertBefore(
+      descBlock,
+      breadcrumbs.nextSibling
+    );
+  } else if (filters) {
+    // No breadcrumbs found; insert before filters
+    filters.parentNode.insertBefore(descBlock, filters);
+  } else {
+    // Fallback: insert after the product browser head
+    var head = document.querySelector(".ecwid-productBrowser-head");
+    if (head) {
+      head.parentNode.insertBefore(descBlock, head.nextSibling);
+    }
+  }
+}
+
+// Build the banner using the fetched image and category name as overlay
+function createApiCategoryBanner(container, categoryName, imageUrl) {
   // Safety: require container only; overlay is optional
   if (!container) {
     console.warn(
@@ -744,7 +816,7 @@ function createApiCategoryBanner(container, overlay, imageUrl) {
   // Create the image element
   const img = document.createElement("img");
   img.src = imageUrl;
-  img.alt = "Category Banner";
+  img.alt = categoryName ? "Category: " + categoryName : "Category Banner";
   img.className = "category-banner-img-from-api";
   img.style.width = "100%";
   img.style.height = "100%";
@@ -758,16 +830,17 @@ function createApiCategoryBanner(container, overlay, imageUrl) {
 
   // Insert image as first child of banner container
   wrapper.appendChild(img);
-  if (overlay) {
-    wrapper.appendChild(overlay);
-  }
-  container.insertBefore(wrapper, container.firstChild);
 
-  // Add overlay classes (use minimal class for new CSS)
-  if (overlay) {
-    overlay.classList.add("category-banner-text");
-    overlay.style = "";
+  // Create name overlay text element (instead of moving .grid__description)
+  if (categoryName) {
+    const nameOverlay = document.createElement("div");
+    nameOverlay.classList.add("category-banner-text");
+    nameOverlay.innerHTML =
+      '<div class="grid__description-inner">' + categoryName + "</div>";
+    wrapper.appendChild(nameOverlay);
   }
+
+  container.insertBefore(wrapper, container.firstChild);
 
   // Force reflow
   setTimeout(function () {

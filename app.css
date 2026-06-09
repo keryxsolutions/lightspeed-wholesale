@@ -150,6 +150,34 @@
 }
 
 /*****************************************************************************/
+/* Category Description (SEO Block Between Breadcrumbs and Filters)          */
+/*****************************************************************************/
+
+.ecwid .category-description-seo {
+  max-width: 800px;
+  margin: 0 auto 0.8em auto;
+  padding: 0.6em 0 0 0;
+  font-size: 0.95em;
+  line-height: 1.6;
+  color: #555;
+}
+
+.ecwid .category-description-seo p {
+  margin: 0 0 0.5em 0;
+}
+
+.ecwid .category-description-seo p:last-child {
+  margin-bottom: 0;
+}
+
+@media (max-width: 480px) {
+  .ecwid .category-description-seo {
+    font-size: 0.9em;
+    padding: 0.4em 0 0 0;
+  }
+}
+
+/*****************************************************************************/
 /* Product Tag System Styles                                                 */
 /*****************************************************************************/
 
