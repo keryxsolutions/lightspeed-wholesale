@@ -94,12 +94,13 @@
 .ecwid .category-banner-text {
   bottom: 0;
   color: white;
-  font-family: var(--title-font-family), system-ui, Segoe UI, Roboto, Arial,
+  font-family: "Cormorant Garamond", system-ui, "Segoe UI", Roboto, Arial,
     sans-serif;
   font-size: 32px;
-  font-weight: var(--title-font-weight);
+  font-style: normal;
+  font-weight: 700;
   left: 0;
-  line-height: 1.4;
+  line-height: 40px;
   margin: 0 auto;
   min-height: 36px;
   padding: 0 var(--category-banner-margin);
@@ -155,7 +156,7 @@
 
 .ecwid .category-description-seo {
   max-width: 800px;
-  margin: 0 auto 0.8em auto;
+  margin: 0 0 0.8em 0;
   padding: 0.6em 0 0 0;
   font-size: 0.95em;
   line-height: 1.6;
