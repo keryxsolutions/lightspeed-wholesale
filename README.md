@@ -85,11 +85,13 @@ Provide to support:
 
 ### Behavior
 - Guest users: prices, buy buttons, and price filter are hidden
-- Logged-in customers: prices and buy buttons are shown
-- The app updates `ec.storefront.config` and injects/removes a safety CSS tag (`#wholesale-hide-css`)
+- Logged-in non-wholesale customers: prices and buy buttons stay hidden
+- Logged-in wholesale customers: prices and buy buttons are shown
+- The app applies a hidden default first, then updates `ec.storefront.config` and injects/removes a safety CSS tag (`#wholesale-hide-css`)
 
 ### Notes
-- Assumes product prices are turned OFF by default in design settings
+- Does not rely on a store UI setting for default price hiding; PDP prices are hidden defensively until wholesale status is confirmed
+- Uses Storefront config price flags as defense-in-depth when available
 - Works across SPA navigation via `Ecwid.OnPageLoaded`
 
 ## Wholesale Registration Flow

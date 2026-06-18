@@ -17,12 +17,13 @@ This feature enforces a "wholesale-only" storefront experience where pricing is 
 ## 2. Current Behavior (as implemented)
 
 ### Detection Logic
-1. **Wait for Ecwid API readiness:** Poll until `Ecwid.Customer.get()` is available
-2. **Check customer status:**
-   - Guest (not logged in) → Hide prices
-   - Logged in, not wholesale member → Hide prices
-   - Logged in, wholesale member → Show prices
-3. **Wholesale membership check:**
+1. **Default to hidden:** Apply the hidden price/buy-button state immediately on initialization and SPA navigation, before customer status resolves
+2. **Wait for Ecwid API readiness:** Poll until `Ecwid.Customer.get()` is available
+3. **Check customer status:**
+   - Guest (not logged in) → Keep prices hidden
+   - Logged in, not wholesale member → Keep prices hidden
+   - Logged in, wholesale member → Reveal prices
+4. **Wholesale membership check:**
    - `customer.membership.name` from `Ecwid.Customer.get()` (case-insensitive)
    - Group name: `window.WHOLESALE_GROUP_NAME` (default: `"Wholesaler"`)
 
@@ -30,12 +31,15 @@ This feature enforces a "wholesale-only" storefront experience where pricing is 
 **When hiding prices:**
 - Inject `<style id="wholesale-hide-css">` to hide:
   - `.details-product-purchase__controls`, `.ecwid-btn--add-to-cart`, `.ecwid-add-to-cart-button-container`, `.product-card-buy-icon`
-  - `.ecwid-productBrowser-price`, `.ecwid-price-value`
+  - Product detail price selectors: `.product-details__product-price-row`, `.product-details__product-price-row [itemprop="price"]`, `.product-details__product-price-row .product-details__product-price`, `.product-details__product-price-row .details-product-price__value`, `.product-details__product-price`, `.product-details__product-price.ec-price-item`, `.details-product-price__value`, `.details-product-price__value.ec-price-item`, `.details-product-price__value.ec-price-item.notranslate`
+  - Legacy/list price selectors retained for category compatibility: `.ecwid-productBrowser-price`, `.ecwid-price-value`
   - Price filter widgets: `.ec-filter--price`, `.ec-filter__item--price`, `.ec-filter__item[data-filter="price"]`, `.ec-price-filter`, `.ec-filter__item--price-range`, `.ec-filter__item--price-slider`, `.ec-filter__item--price input/label/content/title`
 - Storefront config set to hide prices and buy buttons:
   - `product_list_price_behavior = "HIDE"`
   - `product_list_buybutton_behavior = "HIDE"`
   - `product_details_show_product_price = false`
+  - `product_details_show_sale_price = false`
+  - `product_details_show_price_per_unit = false`
   - `product_details_show_wholesale_prices = false`
   - `product_details_show_number_of_items_in_stock = false`
   - `product_details_show_buy_button = false`
@@ -86,6 +90,15 @@ When prices should be hidden, the following `<style>` tag is injected with ID `w
 ```css
 /* Hide price + buy controls */
 .details-product-purchase__controls,
+.product-details__product-price-row,
+.product-details__product-price-row [itemprop="price"],
+.product-details__product-price-row .product-details__product-price,
+.product-details__product-price-row .details-product-price__value,
+.product-details__product-price,
+.product-details__product-price.ec-price-item,
+.details-product-price__value,
+.details-product-price__value.ec-price-item,
+.details-product-price__value.ec-price-item.notranslate,
 .ecwid-productBrowser-price,
 .ecwid-price-value,
 .ecwid-btn--add-to-cart,
@@ -114,6 +127,8 @@ Modified storefront configuration:
 - `product_list_price_behavior = "HIDE" | "SHOW"`
 - `product_list_buybutton_behavior = "HIDE" | "SHOW"`
 - `product_details_show_product_price`
+- `product_details_show_sale_price`
+- `product_details_show_price_per_unit`
 - `product_details_show_wholesale_prices`
 - `product_details_show_number_of_items_in_stock`
 - `product_details_show_buy_button`
@@ -218,7 +233,7 @@ Modified storefront configuration:
 ### SPA Navigation
 - ✅ Price visibility state maintained across page transitions
 - ✅ No flicker or FOUC (Flash of Unstyled Content)
-- ✅ Session cache prevents redundant API calls
+- ✅ Safe hidden state is re-applied before each SPA customer re-check
 - ✅ Works with hash-based and history-based routing
 
 ---
@@ -227,7 +242,7 @@ Modified storefront configuration:
 
 ### API Unavailability
 - **Condition:** `Ecwid.Customer.get()` times out or fails
-- **Behavior:** Default to hiding prices (conservative/secure approach)
+- **Behavior:** Keep the initial hidden state active (conservative/secure approach)
 - **Logging:** Console warning with prefix `"Wholesale:"`
 
 ### Missing Customer Data
@@ -245,9 +260,9 @@ Modified storefront configuration:
 ## 9. Performance Considerations
 
 ### Initialization
-- **Polling interval:** 100ms for `Ecwid.Customer` API readiness
-- **Max wait time:** 5 seconds (fallback to guest behavior)
-- **Session cache:** Prevents redundant API calls on SPA navigation
+- **Polling interval:** 200ms for `Ecwid.Customer` API readiness
+- **Max wait time:** approximately 6 seconds (30 attempts) before guest-safe fallback UI is applied
+- **SPA navigation:** Re-checks customer status on every `Ecwid.OnPageLoaded` event
 
 ### CSS Injection
 - **Single style tag:** `#wholesale-hide-css` (singleton pattern)
@@ -278,9 +293,9 @@ Modified storefront configuration:
 ## 11. Dependencies
 
 ### Upstream (Required for this feature)
-- `waitForEcwidAndTokens()` utility (for Ecwid API readiness polling)
-- `ensureSingletonNode()` utility (for idempotent style tag injection)
-- `removeNodeById()` utility (for cleanup)
+- `Ecwid.Customer.get()` availability for membership detection
+- `window.ec.storefront` configuration object for Storefront config flags
+- `Ecwid.refreshConfig()` when available to apply Storefront config changes
 
 ### Downstream (Features that depend on Gating)
 - **Wholesale Registration Module:** Uses gating status to show banner
@@ -297,14 +312,14 @@ Modified storefront configuration:
 - [ ] Log in as wholesale customer → Verify prices shown, no banner
 - [ ] Log in as wholesale customer → Verify cart links visible, account steps visible
 - [ ] Navigate between product/category pages → Verify state persists
-- [ ] Check Network tab → Verify no redundant `Customer.get()` calls
 - [ ] Check Console → Verify no errors or warnings
-- [ ] Test with browser cache disabled → Verify no flicker
-- [ ] Test with slow network (throttling) → Verify graceful degradation
+- [ ] Test with browser cache disabled → Verify product detail prices remain hidden for guests/non-wholesale users
+- [ ] Test with slow network (throttling) → Verify hidden state appears before customer status resolves
+- [ ] Test customer API timeout/failure → Verify guest-safe UI remains hidden
 
 ### Automated Test Scenarios (Future)
 - Unit test: `isWholesaleMember(customer)` logic
-- Unit test: Session cache hit/miss behavior
+- Unit test: `applyWholesaleGate(false)` injects CSS before config refresh
 - E2E test: Guest flow (prices hidden)
 - E2E test: Wholesale customer flow (prices shown)
 - E2E test: SPA navigation state persistence

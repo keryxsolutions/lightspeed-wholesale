@@ -1,6 +1,6 @@
 /* Lightspeed eCom Custom App JS - Wholesale Portal */
 
-/* This script assumes that product prices are turned OFF by default in the store's design settings. */
+/* This script defensively hides product prices by default, then reveals them for confirmed wholesale customers. */
 /* Added category banner functionality for full-width banners with text overlay. */
 
 // App client ID (from your Ecwid app). Uses a single constant per docs.
@@ -450,6 +450,15 @@ function initializeWholesalePriceVisibility() {
     style.innerText = `
       /* Hide product prices, buy buttons, and price filter for guests */
       .details-product-purchase__controls, /* checkout and add to bag controls on product pages */
+      .product-details__product-price-row, /* product details price row */
+      .product-details__product-price-row [itemprop="price"],
+      .product-details__product-price-row .product-details__product-price,
+      .product-details__product-price-row .details-product-price__value,
+      .product-details__product-price,
+      .product-details__product-price.ec-price-item,
+      .details-product-price__value,
+      .details-product-price__value.ec-price-item,
+      .details-product-price__value.ec-price-item.notranslate,
       .ec-filter--price, /* price filter widget on category pages */
       .ecwid-productBrowser-price,
       .ecwid-price-value,
@@ -484,12 +493,31 @@ function initializeWholesalePriceVisibility() {
       config.product_list_price_behavior = show ? "SHOW" : "HIDE";
       config.product_list_buybutton_behavior = show ? "SHOW" : "HIDE";
       config.product_details_show_product_price = !!show;
+      config.product_details_show_sale_price = !!show;
+      config.product_details_show_price_per_unit = !!show;
       config.product_details_show_wholesale_prices = !!show;
       config.product_details_show_number_of_items_in_stock = !!show;
       config.product_details_show_buy_button = !!show;
       if (typeof Ecwid.refreshConfig === "function") {
         Ecwid.refreshConfig();
       }
+    }
+  }
+
+  // Helper: apply the safe default or reveal prices for confirmed wholesale users
+  function applyWholesaleGate(showPrices) {
+    if (!showPrices) {
+      injectWholesaleHidingCSS();
+    }
+
+    try {
+      setWholesaleConfig(showPrices);
+    } catch (err) {
+      console.warn("Wholesale: Error applying storefront config", err);
+    }
+
+    if (showPrices) {
+      removeWholesaleHidingCSS();
     }
   }
 
@@ -547,6 +575,9 @@ function initializeWholesalePriceVisibility() {
         console.warn(
           "Wholesale: Ecwid.Customer API not available after polling."
         );
+        applyWholesaleGate(false);
+        applyNonWholesaleUIHides(false, false);
+        updateWholesaleHeaderLink(false);
       }
     }
     tryGet();
@@ -574,15 +605,12 @@ function initializeWholesalePriceVisibility() {
       // Update wholesale header login link visibility
       updateWholesaleHeaderLink(isLoggedIn);
 
-      if (showPrices) {
-        setWholesaleConfig(true);
-        removeWholesaleHidingCSS();
-      } else {
-        setWholesaleConfig(false);
-        injectWholesaleHidingCSS();
-      }
+      applyWholesaleGate(showPrices);
     });
   }
+
+  // Safe default: hide prices before async customer status resolves.
+  applyWholesaleGate(false);
 
   // Initial run after API is ready
   pollForCustomerAPI(updateWholesaleVisibility);
@@ -590,6 +618,7 @@ function initializeWholesalePriceVisibility() {
   // Re-run on SPA navigation/page changes
   Ecwid.OnPageLoaded.add(function () {
     restoreRegistrationBanner(); // Restore banner on SPA navigation
+    applyWholesaleGate(false); // Hide during SPA redraw/customer re-check
     pollForCustomerAPI(updateWholesaleVisibility);
     syncAnnouncementBarClass(); // Sync announcement bar body class
   });

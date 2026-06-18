@@ -164,9 +164,9 @@ All modules hook into Ecwid's SPA events:
 ### Wholesale Group Detection
 
 The app determines wholesale status through:
-1. **Preferred**: `customer.membership.name` from `Ecwid.Customer.get()` (lines 710-719)
+1. `customer.membership.name` from `Ecwid.Customer.get()`
    - Compare case-insensitively to `WHOLESALE_GROUP_NAME` (default: "Wholesaler")
-2. **Fallback**: Session cache `WHOLESALE_STATUS_CACHE` (lines 694, 766-768)
+2. Until customer status resolves, price visibility defaults to hidden.
 
 ### Registration Form Submission
 
@@ -229,7 +229,7 @@ const WHOLESALE_FLAGS = {
 
 **Design Settings**:
 - Category name position: "Hide category names" (for banner to work)
-- Product prices: OFF by default (wholesale visibility depends on this)
+- Product prices: app defensively hides by default via `#wholesale-hide-css` and Storefront config flags; do not rely on a store UI setting for default hiding
 
 **Product Types**:
 - Add attribute "Tags" with type `TAGS` and display `DESCR`
@@ -324,7 +324,7 @@ console.log("Page:", Ecwid.getLastLoadedPage());
 1. **Duplicate DOM Injection**: Always check if element exists before creating (use `getElementById` guards)
 2. **SPA Navigation**: Module state must be idempotent; clean up on page change
 3. **Token Timing**: Wait for `Ecwid.getAppPublicToken()` to be available before REST calls
-4. **Price Visibility**: Requires both login check AND wholesale group membership
+4. **Price Visibility**: Requires both login check AND wholesale group membership; default to hidden until membership is confirmed
 5. **Form Hijacking**: Must use MutationObserver on account pages due to Ecwid SPA redraws
 6. **Extra Fields**: Keys may differ from titles; use normalized lookup (lines 891-909)
 7. **Session Cookie**: Storefront `customer/update` requires `credentials: include` (line 884)
@@ -334,8 +334,8 @@ console.log("Page:", Ecwid.getLastLoadedPage());
 After any changes, verify:
 - [ ] Category pages show banner with image and overlay (requires image + description)
 - [ ] Product pages show tags (requires TAGS attribute values)
-- [ ] Guests see no prices or buy buttons
-- [ ] Logged-in non-wholesale users see prices hidden and registration banner
+- [ ] Guests see no prices or buy buttons on category or product detail pages
+- [ ] Logged-in non-wholesale users see prices hidden on category and product detail pages, plus registration banner
 - [ ] Logged-in wholesale users see prices and no banner
 - [ ] `/products/account/register` loads form with prefilled data
 - [ ] Form submission saves customer data (check Network tab)

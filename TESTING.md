@@ -23,6 +23,24 @@ Ecwid.OnAPILoaded.add(() => {
 - Guest: prices/buy buttons/price filters hidden; `#wholesale-hide-css` present.
 - Logged-in non-wholesale: same hiding as guest; cart links and account bag/favorites steps hidden; auto-redirect may fire to registration once per session (`wr-autoredirect`).
 - Wholesale: prices and buy buttons visible; cart links and account steps restored.
+- Product detail pages: as guest/non-wholesale, confirm `.product-details__product-price-row` and `.details-product-price__value` have no rendered boxes; as wholesale, confirm `#wholesale-hide-css` is absent and the price row is visible.
+
+```javascript
+// PDP price hiding check for guest/non-wholesale users.
+// Expected: hide CSS true; row/value rect counts are 0.
+const priceRow = document.querySelector(".product-details__product-price-row");
+const priceValue = document.querySelector(".details-product-price__value");
+console.log("hide css present:", !!document.getElementById("wholesale-hide-css"));
+console.log("price row hidden:", priceRow ? priceRow.getClientRects().length === 0 : "row not found");
+console.log("price value hidden:", priceValue ? priceValue.getClientRects().length === 0 : "value not found");
+
+// PDP price visibility check for wholesale users.
+// Expected: hide CSS false; row rect count is greater than 0.
+console.log("hide css absent:", !document.getElementById("wholesale-hide-css"));
+console.log("price row visible:", priceRow ? priceRow.getClientRects().length > 0 : "row not found");
+```
+- With browser cache disabled or slow-network throttling, reload a PDP as guest/non-wholesale and verify no price flash before customer status resolves.
+
 
 ### 2) Registration Banner
 - Logged-in non-wholesale: banner visible on non-register pages; hidden on `/products/account/register`.
@@ -67,7 +85,7 @@ Ecwid.OnAPILoaded.add(() => {
 - Screen reader: labels announced; errors announced via `aria-describedby`.
 
 ## Regression Checklist (Short)
-- Prices hidden correctly for guest/non-wholesale; visible for wholesale.
+- Prices hidden correctly for guest/non-wholesale on category and product detail pages; visible for wholesale.
 - Banner shows for non-wholesale and hides on register page.
 - Registration form injects, validates, and submits to external server; banners persist across navigation.
 - Category banners render only when image + description present; clean up on other pages.

@@ -159,9 +159,9 @@ All modules hook into Ecwid's SPA events:
 ### Wholesale Group Detection
 
 The app determines wholesale status through:
-1. **Preferred**: `customer.membership.name` from `Ecwid.Customer.get()` (lines 710-719)
+1. `customer.membership.name` from `Ecwid.Customer.get()`
    - Compare case-insensitively to `WHOLESALE_GROUP_NAME` (default: "Wholesaler")
-2. **Fallback**: Session cache `WHOLESALE_STATUS_CACHE` (lines 694, 766-768)
+2. Until customer status resolves, price visibility defaults to hidden.
 
 ### Registration Form Submission
 
@@ -224,7 +224,7 @@ const WHOLESALE_FLAGS = {
 
 **Design Settings**:
 - Category name position: "Hide category names" (for banner to work)
-- Product prices: OFF by default (wholesale visibility depends on this)
+- Product prices: app defensively hides by default via `#wholesale-hide-css` and Storefront config flags; do not rely on a store UI setting for default hiding
 
 **Product Types**:
 - Add attribute "Tags" with type `TAGS` and display `DESCR`
