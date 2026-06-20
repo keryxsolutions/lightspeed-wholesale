@@ -224,7 +224,7 @@ const WHOLESALE_FLAGS = {
 
 **Design Settings**:
 - Category name position: "Hide category names" (for banner to work)
-- Product prices: app defensively hides by default via `#wholesale-hide-css` and Storefront config flags; do not rely on a store UI setting for default hiding
+- Product prices: app defensively hides by default via `#wholesale-hide-css`, Storefront config flags, PDP price DOM scrubbing, and `data-nosnippet`; do not rely on a store UI setting for default hiding
 
 **Product Types**:
 - Add attribute "Tags" with type `TAGS` and display `DESCR`

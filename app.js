@@ -486,6 +486,101 @@ function initializeWholesalePriceVisibility() {
     if (style) style.remove();
   }
 
+  const wholesalePriceScrubSelectors = [
+    ".product-details__product-price-row",
+    ".product-details__product-price",
+    ".details-product-price__value",
+    '[itemprop="price"]',
+    '[itemprop="lowPrice"]',
+    '[itemprop="highPrice"]',
+    '[itemprop="priceSpecification"]',
+  ].join(",");
+
+  const wholesaleNoSnippetSelectors = [
+    ".product-details__product-price-row",
+    ".product-details__product-price",
+    ".details-product-price__value",
+    '[itemprop="offers"]',
+  ].join(",");
+
+  let wholesalePriceScrubObserver = null;
+  let wholesalePriceScrubQueued = false;
+
+  function applyWholesaleNoSnippetFlags() {
+    document.querySelectorAll(wholesaleNoSnippetSelectors).forEach((el) => {
+      el.setAttribute("data-nosnippet", "");
+      el.setAttribute("data-wr-nosnippet", "1");
+    });
+  }
+
+  function scrubWholesalePriceNodes() {
+    try {
+      applyWholesaleNoSnippetFlags();
+      document.querySelectorAll(wholesalePriceScrubSelectors).forEach((el) => {
+        const isMetadataNode = el.tagName === "META" || el.tagName === "LINK";
+        const alreadyScrubbed =
+          el.getAttribute("data-wr-price-scrubbed") === "1" &&
+          !el.getAttribute("content") &&
+          (isMetadataNode || !el.textContent.trim());
+        if (alreadyScrubbed) return;
+
+        el.setAttribute("data-nosnippet", "");
+        el.setAttribute("data-wr-nosnippet", "1");
+        el.setAttribute("data-wr-price-scrubbed", "1");
+        el.setAttribute("aria-hidden", "true");
+        el.removeAttribute("content");
+        el.removeAttribute("itemprop");
+
+        if (isMetadataNode) {
+          el.remove();
+        } else {
+          el.textContent = "";
+          el.style.display = "none";
+        }
+      });
+    } catch (err) {
+      console.warn("Wholesale: Error scrubbing price nodes", err);
+    }
+  }
+
+  function startWholesalePriceScrubber() {
+    scrubWholesalePriceNodes();
+    if (wholesalePriceScrubObserver || !document.documentElement) return;
+
+    wholesalePriceScrubObserver = new MutationObserver(() => {
+      if (wholesalePriceScrubQueued) return;
+      wholesalePriceScrubQueued = true;
+      requestAnimationFrame(() => {
+        wholesalePriceScrubQueued = false;
+        scrubWholesalePriceNodes();
+      });
+    });
+
+    wholesalePriceScrubObserver.observe(document.documentElement, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+  }
+
+  function stopWholesalePriceScrubber() {
+    if (wholesalePriceScrubObserver) {
+      wholesalePriceScrubObserver.disconnect();
+      wholesalePriceScrubObserver = null;
+    }
+    wholesalePriceScrubQueued = false;
+
+    document.querySelectorAll('[data-wr-nosnippet="1"]').forEach((el) => {
+      el.removeAttribute("data-nosnippet");
+      el.removeAttribute("data-wr-nosnippet");
+    });
+    document.querySelectorAll('[data-wr-price-scrubbed="1"]').forEach((el) => {
+      el.removeAttribute("data-wr-price-scrubbed");
+      el.removeAttribute("aria-hidden");
+      el.style.display = "";
+    });
+  }
+
   // Helper: set price/button visibility using ec.storefront.config
   function setWholesaleConfig(show) {
     if (window.ec && window.ec.storefront) {
@@ -506,8 +601,11 @@ function initializeWholesalePriceVisibility() {
 
   // Helper: apply the safe default or reveal prices for confirmed wholesale users
   function applyWholesaleGate(showPrices) {
-    if (!showPrices) {
+    if (showPrices) {
+      stopWholesalePriceScrubber();
+    } else {
       injectWholesaleHidingCSS();
+      startWholesalePriceScrubber();
     }
 
     try {

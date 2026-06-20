@@ -44,6 +44,10 @@ This feature enforces a "wholesale-only" storefront experience where pricing is 
   - `product_details_show_number_of_items_in_stock = false`
   - `product_details_show_buy_button = false`
 - Call `Ecwid.refreshConfig()` to apply changes
+- Start a price scrubber that:
+  - Adds `data-nosnippet` to PDP price/offer containers
+  - Removes price text and `content` / `itemprop` metadata from current PDP price nodes
+  - Watches Ecwid redraws with `MutationObserver` and re-scrubs inserted or changed price nodes
 
 **Additional UI Hiding (for guests and non-wholesale):**
 - Hide cart links: all anchors with `/products/cart` (inline `display:none`, marked `data-wr-hidden-cart-link="1"`) on every page
@@ -54,6 +58,7 @@ This feature enforces a "wholesale-only" storefront experience where pricing is 
 - `maybeRedirectToRegistration` runs during gating; if logged-in + non-wholesale + not on register route and no `sessionStorage.wr-autoredirect`, redirect once per session to `/products/account/register`.
 
 **When showing prices (wholesale members):**
+- Stop the price scrubber and remove app-owned `data-nosnippet` markers
 - Remove `#wholesale-hide-css`
 - Set storefront config fields listed above to show
 - Call `Ecwid.refreshConfig()`
@@ -121,6 +126,13 @@ When prices should be hidden, the following `<style>` tag is injected with ID `w
   display: none !important;
 }
 ```
+
+### DOM Scrubbing and Snippet Control
+For guest/non-wholesale users, PDP price nodes are scrubbed after Ecwid renders them:
+- Price nodes are marked `aria-hidden="true"`, `data-nosnippet`, and `data-wr-price-scrubbed="1"`
+- `content` and `itemprop` attributes are removed from price nodes
+- Text content is blanked and the node is hidden inline
+- A `MutationObserver` re-runs the scrubber on Ecwid SPA redraws
 
 ### Config Toggles
 Modified storefront configuration:

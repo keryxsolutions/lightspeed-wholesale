@@ -87,7 +87,7 @@ Provide to support:
 - Guest users: prices, buy buttons, and price filter are hidden
 - Logged-in non-wholesale customers: prices and buy buttons stay hidden
 - Logged-in wholesale customers: prices and buy buttons are shown
-- The app applies a hidden default first, then updates `ec.storefront.config` and injects/removes a safety CSS tag (`#wholesale-hide-css`)
+- The app applies a hidden default first, then updates `ec.storefront.config`, injects/removes a safety CSS tag (`#wholesale-hide-css`), and scrubs PDP price text/metadata with `data-nosnippet` for non-wholesale states
 
 ### Notes
 - Does not rely on a store UI setting for default price hiding; PDP prices are hidden defensively until wholesale status is confirmed

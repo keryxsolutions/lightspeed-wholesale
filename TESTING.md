@@ -23,16 +23,20 @@ Ecwid.OnAPILoaded.add(() => {
 - Guest: prices/buy buttons/price filters hidden; `#wholesale-hide-css` present.
 - Logged-in non-wholesale: same hiding as guest; cart links and account bag/favorites steps hidden; auto-redirect may fire to registration once per session (`wr-autoredirect`).
 - Wholesale: prices and buy buttons visible; cart links and account steps restored.
-- Product detail pages: as guest/non-wholesale, confirm `.product-details__product-price-row` and `.details-product-price__value` have no rendered boxes; as wholesale, confirm `#wholesale-hide-css` is absent and the price row is visible.
+- Product detail pages: as guest/non-wholesale, confirm `.product-details__product-price-row` / `.details-product-price__value` are hidden and scrubbed of price text/metadata; as wholesale, confirm `#wholesale-hide-css` is absent and the price row is visible.
 
 ```javascript
-// PDP price hiding check for guest/non-wholesale users.
-// Expected: hide CSS true; row/value rect counts are 0.
+// PDP price hiding/scrubbing check for guest/non-wholesale users.
+// Expected: hide CSS true; row/value rect counts are 0; no price text/content metadata remains.
 const priceRow = document.querySelector(".product-details__product-price-row");
 const priceValue = document.querySelector(".details-product-price__value");
+const itempropPrice = document.querySelector('[itemprop="price"]');
 console.log("hide css present:", !!document.getElementById("wholesale-hide-css"));
 console.log("price row hidden:", priceRow ? priceRow.getClientRects().length === 0 : "row not found");
 console.log("price value hidden:", priceValue ? priceValue.getClientRects().length === 0 : "value not found");
+console.log("price value scrubbed:", priceValue ? priceValue.textContent.trim() === "" : "value not found");
+console.log("itemprop price removed:", !itempropPrice);
+console.log("data-nosnippet set:", !!document.querySelector('[data-wr-nosnippet="1"]'));
 
 // PDP price visibility check for wholesale users.
 // Expected: hide CSS false; row rect count is greater than 0.
