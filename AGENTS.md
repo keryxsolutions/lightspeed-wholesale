@@ -1,5 +1,11 @@
 # AGENTS.md
 
+
+## Archive integration
+
+- **Client:** `espritcreations`
+- **Sync communications:** use the `client-archive-sync` skill
+
 This file provides guidance to coding agents when working with code in this repository.
 
 ## Project Overview
