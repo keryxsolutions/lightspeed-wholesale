@@ -2664,20 +2664,33 @@ function attachAccountRegisterHandlers(root, defs, mode = "register") {
     document.head.appendChild(el);
   }
 
-  // Product microdata renders a moment after the product page loads.
-  function tryInject() { setTimeout(injectProductJsonLdFromDom, 400); }
+  // Microdata renders once Ecwid draws the product, which can lag behind
+  // OnPageLoaded (and behind our init on a direct load). Poll for it rather
+  // than relying on a single timeout so direct loads + slow renders both work.
+  var pollInterval = null;
+  function stopJsonLdPoll() { if (pollInterval) { clearInterval(pollInterval); pollInterval = null; } }
+  function startJsonLdPoll() {
+    stopJsonLdPoll();
+    var tries = 0;
+    pollInterval = setInterval(function () {
+      tries++;
+      if (readProductMicrodata()) { injectProductJsonLdFromDom(); stopJsonLdPoll(); return; }
+      if (tries > 25) { stopJsonLdPoll(); } // ~7.5s, give up
+    }, 300);
+  }
 
   function initProductJsonLd() {
     Ecwid.OnPageLoaded.add(function (page) {
       if (page && page.type === 'PRODUCT') {
-        tryInject();
+        startJsonLdPoll();
       } else {
+        stopJsonLdPoll();
         removeProductJsonLd(); // non-product page — drop the block
       }
     });
     // Direct product-page load: OnPageLoaded may have fired before this
-    // handler registered, so also attempt an initial inject.
-    tryInject();
+    // handler registered, so start the poll immediately too.
+    startJsonLdPoll();
   }
 
   // Wait for the Ecwid storefront SDK (OnPageLoaded only — no getProduct).
