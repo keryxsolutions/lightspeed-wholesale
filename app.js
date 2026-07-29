@@ -2605,6 +2605,7 @@ function attachAccountRegisterHandlers(root, defs, mode = "register") {
 // ===========================================================================
 (function () {
   var JSONLD_SCRIPT_ID = 'ec-product-jsonld';
+  console.log('[ec-jsonld] IIFE ran; Ecwid ready?', !!(window.Ecwid && Ecwid.OnPageLoaded));
 
   function removeProductJsonLd() {
     var prev = document.getElementById(JSONLD_SCRIPT_ID);
@@ -2624,7 +2625,7 @@ function attachAccountRegisterHandlers(root, defs, mode = "register") {
     function prop(name) {
       var node = root.querySelector('[itemprop="' + name + '"]');
       if (!node) return '';
-      return (node.getAttribute('content') || node.getAttribute('href') || node.textContent || '').trim();
+      return (node.getAttribute('content') || node.getAttribute('href') || node.getAttribute('src') || node.textContent || '').trim();
     }
     var name = prop('name');
     if (!name) return null; // not a real product block
@@ -2662,6 +2663,7 @@ function attachAccountRegisterHandlers(root, defs, mode = "register") {
     el.id = JSONLD_SCRIPT_ID;
     el.textContent = JSON.stringify(schema);
     document.head.appendChild(el);
+    console.log('[ec-jsonld] INJECTED:', schema.name);
   }
 
   // Microdata renders once Ecwid draws the product, which can lag behind
@@ -2674,8 +2676,10 @@ function attachAccountRegisterHandlers(root, defs, mode = "register") {
     var tries = 0;
     pollInterval = setInterval(function () {
       tries++;
-      if (readProductMicrodata()) { injectProductJsonLdFromDom(); stopJsonLdPoll(); return; }
-      if (tries > 25) { stopJsonLdPoll(); } // ~7.5s, give up
+      var md = readProductMicrodata();
+      console.log('[ec-jsonld] poll tick ' + tries + ' md=' + !!md);
+      if (md) { injectProductJsonLdFromDom(); stopJsonLdPoll(); return; }
+      if (tries > 100) { console.log('[ec-jsonld] gave up after ~30s'); stopJsonLdPoll(); } // ~30s
     }, 300);
   }
 
