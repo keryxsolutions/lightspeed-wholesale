@@ -2677,7 +2677,6 @@ function attachAccountRegisterHandlers(root, defs, mode = "register") {
     pollInterval = setInterval(function () {
       tries++;
       var md = readProductMicrodata();
-      console.log('[ec-jsonld] poll tick ' + tries + ' md=' + !!md);
       if (md) { injectProductJsonLdFromDom(); stopJsonLdPoll(); return; }
       if (tries > 100) { console.log('[ec-jsonld] gave up after ~30s'); stopJsonLdPoll(); } // ~30s
     }, 300);
