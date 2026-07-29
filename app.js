@@ -2596,18 +2596,19 @@ function attachAccountRegisterHandlers(root, defs, mode = "register") {
 // ===========================================================================
 // PRODUCT JSON-LD STRUCTURED DATA (issue #13)
 // Injects schema.org/Product JSON-LD on product pages so Google + AI engines
-// get clean machine-readable data. PRICE IS INTENTIONALLY OMITTED (price-gated
-// wholesale storefront). Self-contained: own Ecwid ready-poll + OnPageLoaded
-// handler. Does NOT touch the wholesale price-gating logic above.
+// get clean machine-readable data. Reads the product info from the DOM's
+// existing schema.org/Product microdata (Ecwid emits name/sku/brand/image/
+// description). PRICE IS INTENTIONALLY OMITTED (price-gated wholesale store).
+// Self-contained: own OnPageLoaded handler; does NOT touch the wholesale
+// price-gating logic. NOTE: Ecwid.getProduct does NOT exist on the storefront
+// SDK, so we read the DOM instead.
 // ===========================================================================
 (function () {
   var JSONLD_SCRIPT_ID = 'ec-product-jsonld';
 
-  function htmlToText(html) {
-    if (!html) return '';
-    var div = document.createElement('div');
-    div.innerHTML = html;
-    return (div.textContent || div.innerText || '').trim();
+  function removeProductJsonLd() {
+    var prev = document.getElementById(JSONLD_SCRIPT_ID);
+    if (prev) prev.remove();
   }
 
   function absoluteUrl(url) {
@@ -2616,49 +2617,45 @@ function attachAccountRegisterHandlers(root, defs, mode = "register") {
     catch (e) { return url; }
   }
 
-  // Single truthful availability value — never contradictory.
-  function resolveAvailability(product) {
-    if (!product) return '';
-    if (product.unlimited === true) return 'https://schema.org/InStock';
-    if (typeof product.quantity === 'number') {
-      return product.quantity > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock';
+  // Read the product's schema.org microdata from the rendered DOM.
+  function readProductMicrodata() {
+    var root = document.querySelector('[itemtype*="schema.org/Product"]');
+    if (!root) return null;
+    function prop(name) {
+      var node = root.querySelector('[itemprop="' + name + '"]');
+      if (!node) return '';
+      return (node.getAttribute('content') || node.getAttribute('href') || node.textContent || '').trim();
     }
-    if (typeof product.inStock === 'boolean') {
-      return product.inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock';
-    }
-    return ''; // stock status not exposed -> omit rather than guess
+    var name = prop('name');
+    if (!name) return null; // not a real product block
+    return {
+      name: name,
+      sku: prop('sku'),
+      brand: prop('brand'),
+      image: prop('image'),
+      description: prop('description')
+    };
   }
 
-  function removeProductJsonLd() {
-    var prev = document.getElementById(JSONLD_SCRIPT_ID);
-    if (prev) prev.remove();
-  }
-
-  function injectProductJsonLd(product) {
-    removeProductJsonLd();
-    if (!product || !product.id) return;
+  function injectProductJsonLdFromDom() {
+    var md = readProductMicrodata();
+    if (!md) { removeProductJsonLd(); return; }
+    removeProductJsonLd(); // clear any stale block first
 
     var schema = {
       '@context': 'https://schema.org',
       '@type': 'Product',
-      'name': product.name || '',
-      'brand': { '@type': 'Brand', 'name': 'Esprit Creations' }
+      'name': md.name,
+      'brand': { '@type': 'Brand', 'name': md.brand || 'Esprit Creations' }
     };
-    if (product.sku) schema.sku = product.sku;
+    if (md.sku) schema.sku = md.sku;
+    if (md.image) schema.image = absoluteUrl(md.image);
+    if (md.description) schema.description = md.description;
 
-    var img = product.imageUrl || product.thumbnailUrl || '';
-    if (img) schema.image = absoluteUrl(img);
-
-    if (product.description) schema.description = htmlToText(product.description);
-
-    // offers: availability + product URL only. NO price/priceCurrency (price is gated).
-    var offer = { '@type': 'Offer' };
-    var availability = resolveAvailability(product);
-    if (availability) offer.availability = availability;
-    offer.url = absoluteUrl(product.url || window.location.href);
-    var cond = product.productCondition || product.googleItemCondition || product.condition;
-    if (cond) offer.itemCondition = cond;
-    schema.offers = offer;
+    // offers: product URL only — NO price/priceCurrency (gated) and NO
+    // availability (no reliable guest-visible stock signal; omit rather
+    // than emit a wrong value).
+    schema.offers = { '@type': 'Offer', 'url': absoluteUrl(window.location.href) };
 
     var el = document.createElement('script');
     el.type = 'application/ld+json';
@@ -2667,23 +2664,25 @@ function attachAccountRegisterHandlers(root, defs, mode = "register") {
     document.head.appendChild(el);
   }
 
+  // Product microdata renders a moment after the product page loads.
+  function tryInject() { setTimeout(injectProductJsonLdFromDom, 400); }
+
   function initProductJsonLd() {
     Ecwid.OnPageLoaded.add(function (page) {
-      if (page && page.type === 'PRODUCT' && page.productId) {
-        Ecwid.getProduct(page.productId, function (product) {
-          // Defer slightly so the product-details DOM is settled.
-          setTimeout(function () { injectProductJsonLd(product); }, 100);
-        });
+      if (page && page.type === 'PRODUCT') {
+        tryInject();
       } else {
-        // Non-product page — drop the block so it never goes stale.
-        removeProductJsonLd();
+        removeProductJsonLd(); // non-product page — drop the block
       }
     });
+    // Direct product-page load: OnPageLoaded may have fired before this
+    // handler registered, so also attempt an initial inject.
+    tryInject();
   }
 
-  // Wait for the Ecwid storefront SDK, then register the page hook.
+  // Wait for the Ecwid storefront SDK (OnPageLoaded only — no getProduct).
   var jsonLdInitInterval = setInterval(function () {
-    if (window.Ecwid && Ecwid.OnPageLoaded && typeof Ecwid.getProduct === 'function') {
+    if (window.Ecwid && Ecwid.OnPageLoaded) {
       clearInterval(jsonLdInitInterval);
       initProductJsonLd();
     }
