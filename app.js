@@ -2592,3 +2592,100 @@ function attachAccountRegisterHandlers(root, defs, mode = "register") {
 
 // Deprecated: Replaced by setRegistrationBanner + restoreRegistrationBanner system (v2.2)
 // function showRegistrationSuccessBanner() { ... }
+
+// ===========================================================================
+// PRODUCT JSON-LD STRUCTURED DATA (issue #13)
+// Injects schema.org/Product JSON-LD on product pages so Google + AI engines
+// get clean machine-readable data. PRICE IS INTENTIONALLY OMITTED (price-gated
+// wholesale storefront). Self-contained: own Ecwid ready-poll + OnPageLoaded
+// handler. Does NOT touch the wholesale price-gating logic above.
+// ===========================================================================
+(function () {
+  var JSONLD_SCRIPT_ID = 'ec-product-jsonld';
+
+  function htmlToText(html) {
+    if (!html) return '';
+    var div = document.createElement('div');
+    div.innerHTML = html;
+    return (div.textContent || div.innerText || '').trim();
+  }
+
+  function absoluteUrl(url) {
+    if (!url) return '';
+    try { return new URL(url, window.location.origin).href; }
+    catch (e) { return url; }
+  }
+
+  // Single truthful availability value — never contradictory.
+  function resolveAvailability(product) {
+    if (!product) return '';
+    if (product.unlimited === true) return 'https://schema.org/InStock';
+    if (typeof product.quantity === 'number') {
+      return product.quantity > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock';
+    }
+    if (typeof product.inStock === 'boolean') {
+      return product.inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock';
+    }
+    return ''; // stock status not exposed -> omit rather than guess
+  }
+
+  function removeProductJsonLd() {
+    var prev = document.getElementById(JSONLD_SCRIPT_ID);
+    if (prev) prev.remove();
+  }
+
+  function injectProductJsonLd(product) {
+    removeProductJsonLd();
+    if (!product || !product.id) return;
+
+    var schema = {
+      '@context': 'https://schema.org',
+      '@type': 'Product',
+      'name': product.name || '',
+      'brand': { '@type': 'Brand', 'name': 'Esprit Creations' }
+    };
+    if (product.sku) schema.sku = product.sku;
+
+    var img = product.imageUrl || product.thumbnailUrl || '';
+    if (img) schema.image = absoluteUrl(img);
+
+    if (product.description) schema.description = htmlToText(product.description);
+
+    // offers: availability + product URL only. NO price/priceCurrency (price is gated).
+    var offer = { '@type': 'Offer' };
+    var availability = resolveAvailability(product);
+    if (availability) offer.availability = availability;
+    offer.url = absoluteUrl(product.url || window.location.href);
+    var cond = product.productCondition || product.googleItemCondition || product.condition;
+    if (cond) offer.itemCondition = cond;
+    schema.offers = offer;
+
+    var el = document.createElement('script');
+    el.type = 'application/ld+json';
+    el.id = JSONLD_SCRIPT_ID;
+    el.textContent = JSON.stringify(schema);
+    document.head.appendChild(el);
+  }
+
+  function initProductJsonLd() {
+    Ecwid.OnPageLoaded.add(function (page) {
+      if (page && page.type === 'PRODUCT' && page.productId) {
+        Ecwid.getProduct(page.productId, function (product) {
+          // Defer slightly so the product-details DOM is settled.
+          setTimeout(function () { injectProductJsonLd(product); }, 100);
+        });
+      } else {
+        // Non-product page — drop the block so it never goes stale.
+        removeProductJsonLd();
+      }
+    });
+  }
+
+  // Wait for the Ecwid storefront SDK, then register the page hook.
+  var jsonLdInitInterval = setInterval(function () {
+    if (window.Ecwid && Ecwid.OnPageLoaded && typeof Ecwid.getProduct === 'function') {
+      clearInterval(jsonLdInitInterval);
+      initProductJsonLd();
+    }
+  }, 100);
+})();
