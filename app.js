@@ -2653,10 +2653,10 @@ function attachAccountRegisterHandlers(root, defs, mode = "register") {
     if (md.image) schema.image = absoluteUrl(md.image);
     if (md.description) schema.description = md.description;
 
-    // offers: product URL only — NO price/priceCurrency (gated) and NO
-    // availability (no reliable guest-visible stock signal; omit rather
-    // than emit a wrong value).
-    schema.offers = { '@type': 'Offer', 'url': absoluteUrl(window.location.href) };
+    // No offers block: price-gated wholesale storefront = no public retail
+    // offer. An Offer without a price makes Google flag the item INVALID
+    // (Rich Results Test 2026-07-29); omitting offers keeps a valid Product
+    // with only a non-critical "missing offers" warning.
 
     var el = document.createElement('script');
     el.type = 'application/ld+json';
