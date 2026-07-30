@@ -7,7 +7,7 @@ This custom app enhances a Lightspeed (Ecwid) storefront with four integrated fe
 - **Product Tags** — Display tags from TAGS attributes below product descriptions
 - **Wholesale Registration Flow** — Account-based registration form on `/products/account/register`
 
-All functionality runs client-side on the storefront. Uses Ecwid Storefront JS API and REST API with public token; no custom backend required.
+Most functionality runs client-side using Ecwid Storefront JS API and REST API with public token. The wholesale registration flow uses an external Cloudflare Worker server (`lightspeed-wholesale-server`) for Ecwid Admin REST operations.
 
 ## Product Requirements
 

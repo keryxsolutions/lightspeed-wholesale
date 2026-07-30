@@ -21,7 +21,7 @@ This is a Lightspeed (Ecwid) custom storefront app that enhances e-commerce func
 **Important Constraints:**
 - Only `app.js` and `app.css` are loaded by Lightspeed
 - All logic must run client-side on the storefront
-- No custom backend or proxy server
+- Registration uses an external Registration Server (Cloudflare Worker); all other logic is client-side
 - Uses Ecwid Storefront JS API and public REST endpoints only
 
 ## Product Requirements (PRDs)
@@ -63,27 +63,27 @@ This project has no build process. The files are static and hosted directly:
 
 The application is organized into four main initialization functions called from `Ecwid.OnAPILoaded`:
 
-1. **`initializeWholesalePriceVisibility()`** (lines 145-238)
+1. **`initializeWholesalePriceVisibility()`**
    - Hides prices/buy buttons for guests, shows for logged-in users
    - Injects/removes `#wholesale-hide-css` style tag
    - Updates `ec.storefront.config` settings
    - Polls for `Ecwid.Customer` API readiness
    - Responds to `Ecwid.OnPageLoaded` events for SPA navigation
 
-2. **`initializeCategoryBanner()`** (lines 260-445)
+2. **`initializeCategoryBanner()`**
    - Fetches category data via Ecwid REST API (`/api/v3/{storeId}/categories/{categoryId}`)
    - Creates full-width banner from category image
    - Overlays category description text
    - Requires "Hide category names" design setting
    - Injects external CSS and Google Fonts
 
-3. **`initializeProductTagSystem()`** (lines 451-656)
+3. **`initializeProductTagSystem()`**
    - Fetches product data via REST API (`/api/v3/{storeId}/products/{productId}`)
    - Renders tags from TAGS attribute below product content
    - Provides tag links (currently placeholder alerts)
    - Requires TAGS attribute configured in Product Types
 
-4. **`initializeWholesaleRegistration()`** (lines 670-1068)
+4. **`initializeWholesaleRegistration()`**
    - Shows banner for logged-in non-wholesale users
    - Injects registration form on `/products/account/register` page
    - Hijacks `.ec-cart__body-inner` container to render custom form
@@ -176,36 +176,28 @@ The app determines wholesale status through:
 
 ### Registration Form Submission
 
-The form uses the Storefront customer update endpoint (lines 878-889):
+The form submits to the external Registration Server (Cloudflare Worker):
 ```javascript
-POST https://app.ecwid.com/storefront/api/v1/{storeId}/customer/update
+POST {REG_SERVER_URL}/api/register
+Authorization: Bearer {sessionToken}
+Idempotency-Key: {UUID}
 Content-Type: application/json
-Credentials: include (to send session cookie)
 
 {
-  updatedCustomer: {
-    name: "...",
-    billingPerson: { name, companyName, postalCode, phone }
-  },
-  checkout: {
-    extraFields: { [key]: { title, value } },
-    extraFieldsPayload: {
-      mapToUpdate: { [key]: { title, type, required, cpField: true } },
-      updateMode: "UPDATE_HIDDEN"
-    }
-  },
-  lang: "en"
+  "storeId": "121843055",
+  "lang": "en",
+  "values": { "name": "...", "companyName": "...", "phone": "...", "taxId": "...", ... }
 }
 ```
 
-**Important**: Group assignment happens server-side via Ecwid Automations/Webhooks (not in client code).
+**Server handles**: Customer profile updates, extra fields persistence, immediate wholesale group assignment, idempotent operations. See `lightspeed-wholesale-server` repo + `docs/ECWID-REGISTRATION-API.md` for the full server specification.
 
 ### CSS Injection Strategy
 
 1. External CSS loaded from GitHub Pages (lines 420-435, 617-628)
 2. Category banner and tag styles in `app.css`
-3. Price-hiding CSS injected inline as `<style>` tag when needed (lines 147-173)
-4. Banner styling uses inline styles for stability (lines 786-794)
+3. Price-hiding CSS injected inline as `<style>` tag when needed (`injectWholesaleHidingCSS()`)
+4. Banner styling uses inline styles for stability
 
 ### Error Handling Pattern
 
@@ -272,9 +264,9 @@ All REST calls should use:
 
 ### Updating Registration Form Fields
 
-1. Modify field definitions in `loadCheckoutExtraFieldDefsSafe()` fallback (lines 922-927)
-2. Update `renderOrUpdateAccountRegister()` form HTML (lines 964-997)
-3. Update `buildStorefrontUpdatePayload()` mapping (lines 1001-1035)
+1. Modify field definitions in the App Public Config (published via App Storage) or the fallback in `initializeWholesaleRegistration()`
+2. Update `renderOrUpdateAccountRegister()` form HTML
+3. Update `buildRegistrationServerPayload()` to include the field in the server submission
 4. Update PRD: [docs/registration.prd](docs/registration.prd) (canonical spec for registration feature)
 
 ### Debugging
@@ -333,7 +325,7 @@ console.log("Page:", Ecwid.getLastLoadedPage());
 4. **Price Visibility**: Requires both login check AND wholesale group membership; default to hidden until membership is confirmed
 5. **Form Hijacking**: Must use MutationObserver on account pages due to Ecwid SPA redraws
 6. **Extra Fields**: Keys may differ from titles; use normalized lookup (lines 891-909)
-7. **Session Cookie**: Storefront `customer/update` requires `credentials: include` (line 884)
+7. **Session Token**: Registration server auth uses the storefront session token (Bearer); ensure `getStorefrontSessionToken()` resolves before submission
 
 ## Testing Checklist
 
@@ -358,9 +350,5 @@ After any changes, verify:
 
 ## Version History
 
-Current implementation reflects PRD v1.1 (storefront-only approach):
-- Removed custom backend/proxy server
-- Removed Admin REST calls from storefront
-- Registration integrated into `/products/account/register`
-- Uses Storefront `customer/update` endpoint with session cookies
-- Group assignment via Ecwid Automations/Webhooks
+- **v2.0+**: Registration moved to external Registration Server (Cloudflare Worker). Client submits to `POST {REG_SERVER_URL}/api/register` with Bearer session token; server handles all Admin REST operations (profile updates, extra fields, group assignment).
+- **v1.1** (historical): Storefront-only approach using `customer/update` endpoint with session cookies. Registration integrated into `/products/account/register`.
