@@ -473,7 +473,9 @@ function initializeWholesalePriceVisibility() {
       .ec-filter__item--price input,
       .ec-filter__item--price label,
       .ec-filter__item--price .ec-filter__item-content,
-      .ec-filter__item--price .ec-filter__item-title {
+      .ec-filter__item--price .ec-filter__item-title,
+      /* Instant Site homepage Product Collection: "Buy Now" buttons on product tiles (guests) */
+      .ins-tile__product-card .ins-control--button {
         display: none !important;
       }
     `;
