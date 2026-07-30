@@ -441,6 +441,46 @@ function updateWholesaleHeaderLink(isLoggedIn) {
 // Wholesale Price Visibility
 /*****************************************************************************/
 
+/*
+ * WHOLESALE PRICE / BUY-BUTTON GATING — Architecture & How to Extend
+ * ===================================================================
+ *
+ * Three layers (defense-in-depth):
+ *
+ * 1. Ecwid storefront config (PRIMARY): setWholesaleConfig(show) toggles
+ *    ec.storefront.config properties (product_list_price_behavior,
+ *    product_list_buybutton_behavior, product_details_show_*) to HIDE for
+ *    guests / SHOW for wholesale. Controls Ecwid storefront widgets only
+ *    (product grids on /products/rings, category pages, product details).
+ *
+ * 2. CSS injection (FALLBACK): injectWholesaleHidingCSS() injects a
+ *    <style id="wholesale-hide-css"> block — hide price/buy-button elements
+ *    via display:none. removeWholesaleHidingCSS() removes it for wholesale.
+ *    This catches elements the storefront config DOESN'T reach — especially
+ *    Instant Site widgets (see below).
+ *
+ * 3. Price scrubber (DYNAMIC): startWholesalePriceScrubber() observes the
+ *    DOM and blanks dynamically-rendered price text.
+ *
+ * ── INSTANT SITE WIDGETS (the gotcha) ──────────────────────────────────
+ * The Instant Site's own widgets — Product Collection tiles on the homepage,
+ * custom pages, etc. — use "ins-" prefixed classes (ins-tile__product-card,
+ * ins-control--button) and DO NOT respect ec.storefront.config. They render
+ * independently of the Ecwid storefront. The Instant Site editor's Design
+ * tab has style entries (colors/fonts) for "Product price" and "Buy button"
+ * but NO show/hide visibility toggle — so CSS is the only conditional gate.
+ *
+ * TO GATE A NEW INSTANT SITE ELEMENT:
+ *   1. Identify the CSS class (chrome-devtools → inspect the live element).
+ *   2. Add the selector to the injectWholesaleHidingCSS() block below
+ *      (comma-separated, scoped to the widget, e.g. .ins-tile__product-card
+ *      .ins-control--button).
+ *   3. Show/hide is automatic: guests → CSS active (hidden); wholesale →
+ *      CSS removed (shown). No other code needed.
+ *
+ * The initial Ecwid admin storefront settings ARE HIDDEN (product_list_*
+ * = HIDE). setWholesaleConfig(true) toggles to SHOW for wholesale users.
+ */
 function initializeWholesalePriceVisibility() {
   // Helper: inject CSS to hide prices, buy buttons, and price filter widget
   function injectWholesaleHidingCSS() {

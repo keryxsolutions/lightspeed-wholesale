@@ -26,6 +26,27 @@ For detailed specifications, acceptance criteria, and implementation notes, see:
 - `app.css` — CSS styles (request Lightspeed to add: https://keryxsolutions.github.io/lightspeed-wholesale/app.css)
 
 
+## Wholesale Gating Architecture
+
+The wholesale price/buy-button gating uses **three layers** (defense-in-depth):
+
+1. **Ecwid storefront config** (primary): `setWholesaleConfig(show)` toggles `ec.storefront.config` properties (`product_list_price_behavior`, `product_list_buybutton_behavior`, etc.) to `HIDE` for guests / `SHOW` for wholesale. Controls Ecwid storefront widgets (product grids, product details). **Initial admin settings are HIDDEN** — app.js reveals for wholesale users.
+
+2. **CSS injection** (fallback): `injectWholesaleHidingCSS()` injects a `<style id="wholesale-hide-css">` block hiding price/buy-button elements. `removeWholesaleHidingCSS()` removes it for wholesale. Catches elements the config doesn't reach.
+
+3. **Price scrubber** (dynamic): `startWholesalePriceScrubber()` observes the DOM and blanks dynamically-rendered prices.
+
+### Instant Site widgets (the gotcha)
+
+The Instant Site's own widgets — Product Collection tiles on the homepage, custom pages — use `ins-` prefixed classes (`ins-tile__product-card`, `ins-control--button`) and **do NOT respect `ec.storefront.config`**. They render independently. The Instant Site editor's Design tab has style entries (colors) for "Product price" and "Buy button" but **no show/hide visibility toggle**.
+
+**To gate a new Instant Site element:**
+1. Identify the CSS class (chrome-devtools → inspect the live element on the page).
+2. Add the selector to `injectWholesaleHidingCSS()` in `app.js` (comma-separated with existing selectors, scoped to the widget).
+3. Show/hide is automatic: guests → hidden (CSS active); wholesale → shown (CSS removed). No other code needed.
+
+Example: `.ins-tile__product-card .ins-control--button` (homepage "Buy Now" buttons on Product Collection tiles).
+
 ## Category Banner
 
 ### Prerequisites
