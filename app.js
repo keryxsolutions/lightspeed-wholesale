@@ -2579,6 +2579,11 @@ function attachAccountRegisterHandlers(root, defs, mode = "register") {
 
       trackWholesaleEvent("wholesale_registration_success", { mode });
 
+      // Send to GA4 for conversion tracking (key event candidate)
+      if (typeof gtag === "function") {
+        gtag("event", "wholesale_registration_success", { method: mode });
+      }
+
       // Refresh Ecwid config to reflect updated customer group
       if (typeof Ecwid.refreshConfig === "function") {
         await new Promise((resolve) => setTimeout(resolve, 500));
