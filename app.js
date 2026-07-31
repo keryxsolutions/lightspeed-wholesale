@@ -321,6 +321,9 @@ function landingPageVisualPolish() {
     ".ins-tile--text h1 { font-size: clamp(34px, 5vw, 54px) !important; line-height:1.12 !important; }",
     /* Reviews: hide the large empty photo placeholders (avatars were removed) so the testimonial text isn't flanked by big empty boxes. */
     ".ins-tile--customer-review .ins-tile__photo, .ins-tile--customer-review .ins-tile__picture { display:none !important; }",
+    /* Center the testimonial text now that the photo column is gone (removes the alternating zigzag / empty gaps). */
+    ".ins-tile--customer-review .ins-tile__item { justify-content:center !important; }",
+    ".ins-tile--customer-review .ins-tile__block { flex:1 1 100% !important; max-width:760px !important; margin-left:auto !important; margin-right:auto !important; }",
   ].join("\n");
   (document.head || document.documentElement).appendChild(style);
 }
