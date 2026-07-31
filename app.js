@@ -324,6 +324,12 @@ function landingPageVisualPolish() {
     /* Center the testimonial text now that the photo column is gone (removes the alternating zigzag / empty gaps). */
     ".ins-tile--customer-review .ins-tile__item { justify-content:center !important; }",
     ".ins-tile--customer-review .ins-tile__block { flex:1 1 100% !important; max-width:760px !important; margin-left:auto !important; margin-right:auto !important; }",
+    /* Polish 1 — alternating warm off-white section backgrounds for rhythm (Bestsellers + Why/How; Hero & Reviews stay white). */
+    ".ins-tile--category-products, .ins-tile--image-text { background-color:#F7F5F1 !important; }",
+    /* Polish 2 — on mobile, condense to one header info bar: hide the brand-fluff bar, keep WHOLESALE ONLY / $300 MIN. */
+    "@media (max-width:768px){ #tile-announcement-bar-MHKm6r{ display:none !important; } }",
+    /* Polish 3 — unifying warm/desaturate grade on the image-text photos for cohesion. */
+    ".ins-tile--image-text img { filter:saturate(0.9) contrast(1.03) brightness(1.02); }",
   ].join("\n");
   (document.head || document.documentElement).appendChild(style);
 }
