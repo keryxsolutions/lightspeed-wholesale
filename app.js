@@ -311,6 +311,8 @@ function landingPageVisualPolish() {
     ".ins-tile--cta .ins-picture img, .ins-tile--cta img { filter: brightness(0.46) saturate(0.9) !important; }",
     /* CTA band text -> white with a soft shadow for legibility */
     ".ins-tile--cta .ins-tile__title, .ins-tile--cta h1, .ins-tile--cta h2, .ins-tile--cta p, .ins-tile--cta li { color:#FFFFFF !important; text-shadow:0 1px 10px rgba(0,0,0,.5); }",
+    /* Neutralize the theme's button-label auto-contrast filter (invert/grayscale/contrast) that turns white label text dark. */
+    ".ins-tile--cta .ins-control__text { filter:none !important; color:#FFFFFF !important; }",
     /* CTA buttons: high-contrast near-black, larger, uppercase */
     ".ins-tile--cta .ins-control__button { background-color:#463D52 !important; border:none !important; padding:16px 34px !important; font-size:16px !important; font-weight:700 !important; letter-spacing:.08em !important; text-transform:uppercase !important; border-radius:2px !important; box-shadow:0 6px 18px rgba(0,0,0,.28) !important; }",
     ".ins-tile--cta .ins-control__button, .ins-tile--cta .ins-control__button * { color:#FFFFFF !important; }",
