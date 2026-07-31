@@ -307,10 +307,8 @@ function landingPageVisualPolish() {
   var style = document.createElement("style");
   style.id = "landing-visual-polish-css";
   style.textContent = [
-    /* CTA band scrim: darken the photo (it's an <img> in .ins-picture) */
-    ".ins-tile--cta .ins-picture img, .ins-tile--cta img { filter: brightness(0.46) saturate(0.9) !important; }",
-    /* CTA band text -> white with a soft shadow for legibility */
-    ".ins-tile--cta .ins-tile__title, .ins-tile--cta h1, .ins-tile--cta h2, .ins-tile--cta p, .ins-tile--cta li { color:#FFFFFF !important; text-shadow:0 1px 10px rgba(0,0,0,.5); }",
+    /* CTA scrim + white text apply only at >=768px, where the CTA uses an overlay layout (image behind text). On mobile the CTA stacks image-above-text, so we leave the photo normal and the body text dark for readability. */
+    "@media (min-width:768px){ .ins-tile--cta .ins-picture img, .ins-tile--cta img { filter: brightness(0.46) saturate(0.9) !important; } .ins-tile--cta .ins-tile__title, .ins-tile--cta h1, .ins-tile--cta h2, .ins-tile--cta p, .ins-tile--cta li { color:#FFFFFF !important; text-shadow:0 1px 10px rgba(0,0,0,.5); } }",
     /* Neutralize the theme's button-label auto-contrast filter (invert/grayscale/contrast) that turns white label text dark. */
     ".ins-tile--cta .ins-control__text { filter:none !important; color:#FFFFFF !important; }",
     /* CTA buttons: high-contrast near-black, larger, uppercase */
