@@ -291,6 +291,37 @@ function landingPageHeaderFocus() {
 }
 landingPageHeaderFocus();
 
+/**
+ * Landing-page visual polish (wholesale landing page ONLY).
+ * - Restyle the section CTA buttons to a high-contrast near-black so the
+ *   "create account" action is the most prominent control on the page (the
+ *   default dusty-sage buttons vanish into the green-ish lifestyle photos).
+ * - Add a scrim to the CTA bands (darken the photo, lighten the text) so the
+ *   offer copy and microcopy are legible over busy imagery.
+ * - Enlarge the hero H1 so the first screen has real hierarchy.
+ * URL-scoped: only affects /wholesale-sterling-silver-gemstone-jewelry.
+ */
+function landingPageVisualPolish() {
+  if (!location.pathname.includes("wholesale-sterling-silver-gemstone-jewelry")) return;
+  if (document.getElementById("landing-visual-polish-css")) return;
+  var style = document.createElement("style");
+  style.id = "landing-visual-polish-css";
+  style.textContent = [
+    /* CTA band scrim: darken the photo (it's an <img> in .ins-picture) */
+    ".ins-tile--cta .ins-picture img, .ins-tile--cta img { filter: brightness(0.46) saturate(0.9) !important; }",
+    /* CTA band text -> white with a soft shadow for legibility */
+    ".ins-tile--cta .ins-tile__title, .ins-tile--cta h1, .ins-tile--cta h2, .ins-tile--cta p, .ins-tile--cta li { color:#FFFFFF !important; text-shadow:0 1px 10px rgba(0,0,0,.5); }",
+    /* CTA buttons: high-contrast near-black, larger, uppercase */
+    ".ins-tile--cta .ins-control__button { background-color:#1A1A1A !important; border:none !important; padding:16px 34px !important; font-size:16px !important; font-weight:700 !important; letter-spacing:.08em !important; text-transform:uppercase !important; border-radius:2px !important; box-shadow:0 6px 18px rgba(0,0,0,.3) !important; }",
+    ".ins-tile--cta .ins-control__button, .ins-tile--cta .ins-control__button * { color:#FFFFFF !important; }",
+    ".ins-tile--cta .ins-control__button:hover { background-color:#000000 !important; }",
+    /* Hero H1: commanding size */
+    ".ins-tile--text h1 { font-size: clamp(34px, 5vw, 54px) !important; line-height:1.12 !important; }"
+  ].join("\n");
+  (document.head || document.documentElement).appendChild(style);
+}
+landingPageVisualPolish();
+
 Ecwid.OnAPILoaded.add(function () {
   // Restore banner on page load (if exists and not expired)
   restoreRegistrationBanner();
