@@ -318,7 +318,9 @@ function landingPageVisualPolish() {
     ".ins-tile--cta .ins-control__button, .ins-tile--cta .ins-control__button * { color:#FFFFFF !important; }",
     ".ins-tile--cta .ins-control__button:hover { background-color:#372F44 !important; }",
     /* Hero H1: commanding size */
-    ".ins-tile--text h1 { font-size: clamp(34px, 5vw, 54px) !important; line-height:1.12 !important; }"
+    ".ins-tile--text h1 { font-size: clamp(34px, 5vw, 54px) !important; line-height:1.12 !important; }",
+    /* Reviews: hide the large empty photo placeholders (avatars were removed) so the testimonial text isn't flanked by big empty boxes. */
+    ".ins-tile--customer-review .ins-tile__photo, .ins-tile--customer-review .ins-tile__picture { display:none !important; }",
   ].join("\n");
   (document.head || document.documentElement).appendChild(style);
 }
