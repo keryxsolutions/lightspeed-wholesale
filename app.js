@@ -312,9 +312,9 @@ function landingPageVisualPolish() {
     /* CTA band text -> white with a soft shadow for legibility */
     ".ins-tile--cta .ins-tile__title, .ins-tile--cta h1, .ins-tile--cta h2, .ins-tile--cta p, .ins-tile--cta li { color:#FFFFFF !important; text-shadow:0 1px 10px rgba(0,0,0,.5); }",
     /* CTA buttons: high-contrast near-black, larger, uppercase */
-    ".ins-tile--cta .ins-control__button { background-color:#6B2D7A !important; border:none !important; padding:16px 34px !important; font-size:16px !important; font-weight:700 !important; letter-spacing:.08em !important; text-transform:uppercase !important; border-radius:2px !important; box-shadow:0 6px 18px rgba(0,0,0,.28) !important; }",
+    ".ins-tile--cta .ins-control__button { background-color:#463D52 !important; border:none !important; padding:16px 34px !important; font-size:16px !important; font-weight:700 !important; letter-spacing:.08em !important; text-transform:uppercase !important; border-radius:2px !important; box-shadow:0 6px 18px rgba(0,0,0,.28) !important; }",
     ".ins-tile--cta .ins-control__button, .ins-tile--cta .ins-control__button * { color:#FFFFFF !important; }",
-    ".ins-tile--cta .ins-control__button:hover { background-color:#5A2466 !important; }",
+    ".ins-tile--cta .ins-control__button:hover { background-color:#372F44 !important; }",
     /* Hero H1: commanding size */
     ".ins-tile--text h1 { font-size: clamp(34px, 5vw, 54px) !important; line-height:1.12 !important; }"
   ].join("\n");
