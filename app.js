@@ -514,7 +514,15 @@ function initializeWholesalePriceVisibility() {
       .ec-filter__item--price label,
       .ec-filter__item--price .ec-filter__item-content,
       .ec-filter__item--price .ec-filter__item-title,
-      /* Instant Site homepage Product Collection: "Buy Now" buttons on product tiles (guests) */
+      /* Instant Site product tiles: prices shown on Featured Products /
+         Product Collection widgets (homepage AND custom pages, e.g. the
+         /wholesale-sterling-silver-gemstone-jewelry landing page). These
+         ins- widgets ignore ec.storefront.config, so CSS is the only gate. */
+      .ins-tile__product-price,
+      .ins-tile__product-current-price,
+      .ins-tile__product-old-price,
+      .ins-tile__product-compare-at-price,
+      /* Instant Site Product Collection: "Buy Now" buttons on product tiles (guests) */
       .ins-tile__product-card .ins-control--button {
         display: none !important;
       }
