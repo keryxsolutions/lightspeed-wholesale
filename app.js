@@ -1347,12 +1347,20 @@ async function handleWholesaleRegistrationOnPage(page) {
       cleanupForm();
       if (onAccountRoot) {
         removeAccountInfoCard();
-        // Fetch server profile to get extra fields (taxId, cellPhone) and phone
-        // The Storefront JS API doesn't include these values
-        const serverProfile = isWholesale ? await fetchCustomerProfileFromServer() : null;
-        injectAccountInfoCard(customer, isWholesale, serverProfile);
+        if (!isLoggedIn) {
+          // Guest on the account page: show the passwordless sign-in
+          // welcome / mini-tutorial above Ecwid's OTP sign-in form.
+          injectSignInWelcome();
+        } else {
+          removeSignInWelcome();
+          // Fetch server profile to get extra fields (taxId, cellPhone) and phone
+          // The Storefront JS API doesn't include these values
+          const serverProfile = isWholesale ? await fetchCustomerProfileFromServer() : null;
+          injectAccountInfoCard(customer, isWholesale, serverProfile);
+        }
       } else {
         removeAccountInfoCard();
+        removeSignInWelcome();
       }
       return;
     }
@@ -1593,6 +1601,422 @@ function injectAccountInfoCard(customer, isWholesale, serverProfile = null) {
 function removeAccountInfoCard() {
   removeNodeById("wr-account-info-card");
 }
+
+/*****************************************************************************/
+/* Sign-in Welcome / Mini-Tutorial (guest account page)                      */
+/*                                                                           */
+/* Ecwid's passwordless sign-in form ships with a one-line helper:           */
+/*   "For a sign-in, we'll send you a one-time code. An account will be      */
+/*    automatically created if you don't have one yet."                      */
+/* That single line can't carry the detail a new wholesale buyer needs       */
+/* (sign-in flow, $300 minimum, Tax-ID/approval, lead time). We instead      */
+/* inject a styled welcome + tutorial block ABOVE the OTP form and replace   */
+/* the default helper with a concise actionable line. JS injection (not an    */
+/* Ecwid label override) because the content is structured HTML and must     */
+/* survive Ecwid SPA redraws — same pattern as the account-info card.        */
+/*****************************************************************************/
+
+// Override via window.WHOLESALE_MIN_ORDER (e.g. "$500") if the minimum changes.
+function getWholesaleMinOrderLabel() {
+  return (window.WHOLESALE_MIN_ORDER && String(window.WHOLESALE_MIN_ORDER)) || "$300";
+}
+
+const SIGNIN_WELCOME_ID = "wr-signin-welcome";
+const SIGNIN_WELCOME_STYLE_ID = "wr-signin-welcome-style";
+let SIGNIN_WELCOME_OBSERVER = null;
+let SIGNIN_WELCOME_TIMEOUT = null;
+let SIGNIN_WELCOME_LOGGED = false;
+let SIGNIN_WELCOME_RESIZE_HANDLER = null;
+
+// Candidate containers for the account sign-in page (most specific first).
+// We accept the FIRST that exists so a single Ecwid class rename can't disable
+// the whole block. None of these is load-bearing on its own.
+const SIGNIN_CONTAINER_SELECTORS = [
+  ".ec-cart__body-inner",
+  ".ec-cart__body",
+  ".ec-cart--anonymous",
+];
+// Candidate selectors for Ecwid's default one-line helper text.
+const SIGNIN_HELPER_SELECTORS = [
+  ".ec-signin-form__description.ec-signin-form__text",
+  ".ec-signin-form__description",
+  ".ec-signin-form__text",
+  ".ec-signin-form .ec-form__hint",
+];
+// Known fragments of Ecwid's default passwordless helper line — used ONLY as a
+// fallback if Ecwid renames the helper classes but keeps the wording. Add
+// reworded variants here if Ecwid changes the text.
+const SIGNIN_HELPER_TEXT_PATTERNS = [
+  /one[-\s]?time\s+code/i,
+  /we['']?ll\s+send\s+you\s+(a\s+)?code/i,
+  /account\s+will\s+be\s+(automatically\s+)?created/i,
+];
+// Signals that the rendered view is the email/passwordless sign-in (not another
+// account sub-page). The email <input> is the most redesign-stable signal, so it
+// is listed alongside the Ecwid-specific classes.
+const SIGNIN_FORM_SIGNAL_SELECTORS =
+  '.ec-signin-form--otp, .ec-signin-form, [class*="ec-signin"], input[type="email"], input[name="email"]';
+
+// First matching element from a selector list (scoped to root or document).
+// Tolerates any single invalid selector so a future class change can't throw.
+function wrQueryFirst(selectors, root) {
+  const r = root || document;
+  for (let i = 0; i < selectors.length; i++) {
+    try {
+      const el = r.querySelector(selectors[i]);
+      if (el) return el;
+    } catch (e) {
+      /* ignore invalid selector, try next */
+    }
+  }
+  return null;
+}
+
+function injectSignInWelcomeStyles() {
+  if (document.getElementById(SIGNIN_WELCOME_STYLE_ID)) return;
+  const css = `
+#wr-signin-welcome.wr-signin-welcome{
+  /* Read at runtime from Ecwid's sign-in column (.ec-signin-form__content /
+     .ec-vertical-line) so the welcome aligns with the form across Ecwid
+     redesigns AND breakpoints (Ecwid hides the line + indent on narrow
+     screens). These are safe fallbacks if the read ever fails. */
+  --wr-signin-indent:154px;
+  --wr-signin-col-width:388px;
+  --wr-signin-line-width:1px;
+  --wr-signin-line-color:#e0e0e0;
+  width:100%;
+  max-width:calc(var(--wr-signin-indent) + var(--wr-signin-col-width));
+  margin:0;
+  /* Left accent line mirrors .ec-vertical-line; padding-left indents content
+     to sit under the form's content column. Bottom padding (not margin) keeps
+     the line continuous into the form below. */
+  padding:0 0 24px var(--wr-signin-indent);
+  border-left:var(--wr-signin-line-width) solid var(--wr-signin-line-color);
+  box-sizing:border-box;
+  color:#3a3340;
+  font-family:var(--ecwid-font-family, "Helvetica Neue", Helvetica, Arial, sans-serif);
+  font-size:15px;
+  line-height:1.6;
+  text-align:left;
+}
+#wr-signin-welcome .wr-signin-welcome__title{
+  font-family:"Cormorant Garamond", Georgia, "Times New Roman", serif;
+  font-size:26px;
+  font-weight:700;
+  line-height:1.2;
+  color:#463d52;
+  margin:0 0 10px;
+}
+#wr-signin-welcome .wr-signin-welcome__lead{
+  margin:0 0 18px;
+  color:#5b5563;
+}
+#wr-signin-welcome .wr-signin-welcome__card{
+  background:#faf8fb;
+  border:1px solid #e7e2ee;
+  border-radius:10px;
+  padding:16px 18px;
+  margin:0 0 14px;
+}
+#wr-signin-welcome .wr-signin-welcome__heading{
+  font-size:13px;
+  font-weight:700;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  color:#463d52;
+  margin:0 0 10px;
+}
+#wr-signin-welcome .wr-signin-welcome__steps{
+  margin:0 0 12px;
+  padding-left:22px;
+}
+#wr-signin-welcome .wr-signin-welcome__steps li,
+#wr-signin-welcome .wr-signin-welcome__list li{
+  margin:0 0 8px;
+}
+#wr-signin-welcome .wr-signin-welcome__steps li::marker{
+  color:#463d52;
+  font-weight:700;
+}
+#wr-signin-welcome .wr-signin-welcome__note,
+#wr-signin-welcome .wr-signin-welcome__list,
+#wr-signin-welcome .wr-signin-welcome__help{
+  color:#5b5563;
+}
+#wr-signin-welcome .wr-signin-welcome__note{ margin:10px 0 0; }
+#wr-signin-welcome .wr-signin-welcome__list{
+  margin:0;
+  padding-left:18px;
+}
+#wr-signin-welcome .wr-signin-welcome__list li::marker{ color:#463d52; }
+#wr-signin-welcome .wr-signin-welcome__help{
+  margin:16px 0 0;
+  font-size:14px;
+}
+#wr-signin-welcome .wr-signin-welcome__help a{ color:#463d52; }
+#wr-signin-welcome .wr-signin-welcome__highlight{
+  background:#463d52;
+  color:#fff;
+  padding:1px 6px;
+  border-radius:4px;
+}
+@media (max-width:480px){
+  #wr-signin-welcome .wr-signin-welcome__title{ font-size:23px; }
+  #wr-signin-welcome.wr-signin-welcome{ font-size:14px; }
+}
+`;
+  const s = document.createElement("style");
+  s.id = SIGNIN_WELCOME_STYLE_ID;
+  s.textContent = css;
+  document.head.appendChild(s);
+}
+
+function buildSignInWelcome() {
+  const minOrder = getWholesaleMinOrderLabel();
+  return `
+<div id="${SIGNIN_WELCOME_ID}" class="wr-signin-welcome">
+  <h1 class="wr-signin-welcome__title">Welcome to the Esprit Creations Wholesale Portal</h1>
+  <p class="wr-signin-welcome__lead">
+    Handcrafted sterling silver and gemstone jewelry, made for retailers and resellers.
+    Sign in to view wholesale pricing and place orders &mdash; it&rsquo;s quick and password-free.
+  </p>
+
+  <div class="wr-signin-welcome__card">
+    <h2 class="wr-signin-welcome__heading">How sign-in works</h2>
+    <ol class="wr-signin-welcome__steps">
+      <li><strong>Enter your email</strong> in the form below.</li>
+      <li><strong>Check your inbox</strong> &mdash; we&rsquo;ll email you a secure one-time code.</li>
+      <li><strong>Enter the code</strong> to sign in. No password to create or remember.</li>
+    </ol>
+    <p class="wr-signin-welcome__note">
+      First time here? An account is created automatically the first time you sign in, so there&rsquo;s nothing to set up in advance.
+    </p>
+  </div>
+
+  <div class="wr-signin-welcome__card">
+    <h2 class="wr-signin-welcome__heading">Good to know before you order</h2>
+    <ul class="wr-signin-welcome__list">
+      <li><strong><span class="wr-signin-welcome__highlight">${esc(minOrder)} minimum order</span></strong> &mdash; this applies to every order and re-order.</li>
+      <li><strong>Wholesale prices are hidden</strong> until your account is approved. After your first sign-in, complete the short wholesale registration with your business name and Tax ID. Accounts are auto-approved when a valid Tax ID is provided.</li>
+      <li><strong>2-day lead time</strong> on shipped orders, delivered across the US and Canada.</li>
+    </ul>
+  </div>
+
+  <p class="wr-signin-welcome__help">
+    Need help signing in? Email <a href="mailto:elena@espritcreations.com">elena@espritcreations.com</a> or call <a href="tel:+13523166130">(352) 316-6130</a>.
+  </p>
+</div>`;
+}
+
+// Render the welcome block above the sign-in form and tidy Ecwid's default
+// helper. Idempotent + defensive: returns false (so the caller keeps waiting)
+// until a container AND a sign-in signal exist; never throws on a missing node.
+// WORST CASE if Ecwid restructures everything: the block simply doesn't show
+// and the original Ecwid sign-in form keeps working untouched (graceful degrade).
+function applySignInWelcome() {
+  let container;
+  try {
+    container = wrQueryFirst(SIGNIN_CONTAINER_SELECTORS);
+  } catch (e) {
+    return false;
+  }
+  if (!container) return false;
+
+  // Confirm this is the sign-in view before injecting. Guest + account-root is
+  // already guaranteed by the caller; this just avoids a misfire when the
+  // container exists but the form hasn't rendered yet (then we keep waiting).
+  let signal = false;
+  try {
+    signal = !!container.querySelector(SIGNIN_FORM_SIGNAL_SELECTORS);
+    if (!signal && container.closest) {
+      // The anonymous-account wrapper is itself a strong sign.
+      signal = !!container.closest(".ec-cart--anonymous");
+    }
+  } catch (e) {
+    signal = false;
+  }
+  if (!signal) return false;
+
+  try {
+    if (!document.getElementById(SIGNIN_WELCOME_ID)) {
+      const tmp = document.createElement("div");
+      tmp.innerHTML = buildSignInWelcome();
+      const node = tmp.firstElementChild;
+      if (node) container.insertBefore(node, container.firstChild);
+      if (!SIGNIN_WELCOME_LOGGED) {
+        SIGNIN_WELCOME_LOGGED = true;
+        try {
+          console.log("[wr-signin-welcome] shown");
+        } catch (e) {}
+      }
+    }
+    // Best-effort: replace Ecwid's default one-liner near the field.
+    replaceDefaultSignInHelper(container);
+    // Align to Ecwid's lined/indented sign-in column (line + indent + width).
+    alignSignInWelcomeToForm(container);
+  } catch (e) {
+    try {
+      console.warn("[wr-signin-welcome] inject failed", e);
+    } catch (_) {}
+  }
+  return true;
+}
+
+// Mirror Ecwid's sign-in column geometry so the welcome reads as the top of the
+// form card: same left accent line, same content indent, same column width.
+// Reads Ecwid's live computed styles so it tracks redesigns and breakpoints
+// (Ecwid drops the line + indent on narrow screens); falls back to the
+// stylesheet defaults if anything is missing.
+function alignSignInWelcomeToForm(container) {
+  const node = document.getElementById(SIGNIN_WELCOME_ID);
+  if (!node) return;
+  try {
+    const content = wrQueryFirst(
+      [".ec-signin-form__content", ".ec-signin-form--otp", ".ec-signin-form"],
+      container
+    );
+    if (content) {
+      const cs = getComputedStyle(content);
+      const indent = parseFloat(cs.marginLeft || cs.paddingLeft || "0");
+      if (isFinite(indent) && indent >= 0) {
+        node.style.setProperty("--wr-signin-indent", indent + "px");
+      }
+      const colW = parseFloat(cs.width || "0");
+      if (isFinite(colW) && colW > 0) {
+        node.style.setProperty("--wr-signin-col-width", colW + "px");
+      }
+    }
+    const line = wrQueryFirst([".ec-vertical-line"], container);
+    if (line) {
+      const cs = getComputedStyle(line);
+      const lw = parseFloat(cs.borderLeftWidth || "0");
+      node.style.setProperty(
+        "--wr-signin-line-width",
+        (isFinite(lw) ? lw : 1) + "px"
+      );
+      const lc = cs.borderLeftColor;
+      if (lc && lc !== "rgba(0, 0, 0, 0)" && lc !== "transparent") {
+        node.style.setProperty("--wr-signin-line-color", lc);
+      }
+    }
+  } catch (e) {
+    /* keep stylesheet fallback defaults */
+  }
+}
+
+// Replace Ecwid's terse default helper with a concise actionable cue. Tries the
+// known helper classes first, then a text-content scan scoped to Ecwid's sign-in
+// elements (never our own injected block). Silently skips if nothing matches —
+// the tutorial above already covers the same ground, so this is purely cosmetic.
+function replaceDefaultSignInHelper(container) {
+  const ourBlock = container.querySelector("#" + SIGNIN_WELCOME_ID);
+
+  let desc = wrQueryFirst(SIGNIN_HELPER_SELECTORS, container);
+
+  if (!desc) {
+    // Text-based fallback for when Ecwid renames the helper classes but keeps
+    // the wording. Scoped to Ecwid sign-in elements, leaf text nodes only.
+    let roots;
+    try {
+      roots = container.querySelectorAll('[class*="ec-signin"]');
+    } catch (e) {
+      roots = [];
+    }
+    outer: for (let r = 0; r < roots.length; r++) {
+      const el = roots[r];
+      let leaves;
+      try {
+        leaves = el.querySelectorAll("p, div, span, small");
+      } catch (e) {
+        continue;
+      }
+      for (let i = 0; i < leaves.length; i++) {
+        const node = leaves[i];
+        if (ourBlock && (node === ourBlock || ourBlock.contains(node))) continue;
+        if (node.childElementCount > 0) continue; // leaf text only
+        const t = (node.textContent || "").trim();
+        if (
+          t.length > 0 &&
+          t.length < 240 &&
+          SIGNIN_HELPER_TEXT_PATTERNS.some((re) => re.test(t))
+        ) {
+          desc = node;
+          break outer;
+        }
+      }
+    }
+  }
+
+  if (desc && desc.getAttribute("data-wr-replaced") !== "1") {
+    desc.setAttribute("data-wr-replaced", "1");
+    desc.textContent =
+      "Enter your email below and we’ll send you a one-time sign-in code.";
+  }
+}
+
+function stopSignInWelcomeObserver() {
+  if (SIGNIN_WELCOME_OBSERVER) {
+    SIGNIN_WELCOME_OBSERVER.disconnect();
+    SIGNIN_WELCOME_OBSERVER = null;
+  }
+  if (SIGNIN_WELCOME_TIMEOUT) {
+    clearTimeout(SIGNIN_WELCOME_TIMEOUT);
+    SIGNIN_WELCOME_TIMEOUT = null;
+  }
+  if (SIGNIN_WELCOME_RESIZE_HANDLER) {
+    window.removeEventListener("resize", SIGNIN_WELCOME_RESIZE_HANDLER);
+    SIGNIN_WELCOME_RESIZE_HANDLER = null;
+  }
+}
+
+function injectSignInWelcome() {
+  injectSignInWelcomeStyles();
+  stopSignInWelcomeObserver();
+
+  // Try immediately (form usually exists by OnPageLoaded).
+  applySignInWelcome();
+
+  // Self-healing observer: if Ecwid re-renders the container (e.g. email ->
+  // code entry, or an SPA redraw) and drops our block, re-inject it. apply is
+  // idempotent, so steady-state callbacks are cheap no-ops — it won't fight
+  // Ecwid (no DOM write once everything is in place). Scoped to the account
+  // container when available, else body as a fallback.
+  const target = wrQueryFirst(SIGNIN_CONTAINER_SELECTORS) || document.body;
+  let tid = null;
+  const debounced = () => {
+    clearTimeout(tid);
+    tid = setTimeout(applySignInWelcome, 100);
+  };
+  try {
+    SIGNIN_WELCOME_OBSERVER = new MutationObserver(debounced);
+    SIGNIN_WELCOME_OBSERVER.observe(target, { childList: true, subtree: true });
+    // Safety backstop so the observer never lingers indefinitely.
+    SIGNIN_WELCOME_TIMEOUT = setTimeout(stopSignInWelcomeObserver, 30000);
+  } catch (e) {
+    try {
+      console.warn("[wr-signin-welcome] observer setup failed", e);
+    } catch (_) {}
+  }
+  // Re-align on viewport changes: Ecwid's column indent/width are responsive
+  // (the vertical line is hidden on narrow screens), so re-read on resize.
+  if (!SIGNIN_WELCOME_RESIZE_HANDLER) {
+    let rtid = null;
+    const onResize = () => {
+      clearTimeout(rtid);
+      rtid = setTimeout(() => {
+        alignSignInWelcomeToForm(wrQueryFirst(SIGNIN_CONTAINER_SELECTORS));
+      }, 150);
+    };
+    SIGNIN_WELCOME_RESIZE_HANDLER = onResize;
+    window.addEventListener("resize", onResize);
+  }
+}
+
+function removeSignInWelcome() {
+  stopSignInWelcomeObserver();
+  removeNodeById(SIGNIN_WELCOME_ID);
+}
+
 let ACCOUNT_REGISTER_OBSERVER = null;
 let RENDERING_ACC_FORM = false;
 
