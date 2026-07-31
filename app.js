@@ -266,6 +266,31 @@ function replaceSvgWithLotus(targetElement) {
     console.error('Error replacing SVG with lotus:', error);
   }
 }
+/**
+ * Landing-page header focus (wholesale landing page ONLY).
+ * Strips leaky header controls — nav menu (Shop Designs, Unique Collections,
+ * Contact, Our Journey), search, and favorites — so a paid visitor's top-of-
+ * page stays on the account-creation CTA (logo + "Login for Wholesale Prices"
+ * button + phone). Cart is already gated-hidden for guests. Scoped by URL:
+ * the style is injected only on the landing page, so every other page is
+ * unaffected. Runs immediately on script load (no nav flash).
+ */
+function landingPageHeaderFocus() {
+  if (!location.pathname.includes("wholesale-sterling-silver-gemstone-jewelry")) return;
+  if (document.getElementById("landing-header-focus-css")) return;
+  var style = document.createElement("style");
+  style.id = "landing-header-focus-css";
+  style.textContent =
+    ".ins-header__menu-inner," +       /* nav menu links */
+    ".ins-header__search-field," +    /* search input */
+    ".ins-header__search-button," +   /* search button */
+    ".ins-header__icon--favorites {" + /* favorites icon */
+    "  display: none !important;" +
+    "}";
+  (document.head || document.documentElement).appendChild(style);
+}
+landingPageHeaderFocus();
+
 Ecwid.OnAPILoaded.add(function () {
   // Restore banner on page load (if exists and not expired)
   restoreRegistrationBanner();
