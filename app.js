@@ -534,8 +534,13 @@ function updateWholesaleHeaderLink(isLoggedIn) {
  * custom pages, etc. — use "ins-" prefixed classes (ins-tile__product-card,
  * ins-control--button) and DO NOT respect ec.storefront.config. They render
  * independently of the Ecwid storefront. The Instant Site editor's Design
- * tab has style entries (colors/fonts) for "Product price" and "Buy button"
- * but NO show/hide visibility toggle — so CSS is the only conditional gate.
+ * tab now has a "Show element" toggle for "Product price" and "Buy button"
+ * (per-widget). Set to OFF, it hides at the RENDER level (preferred: no FOUC).
+ * The CSS below remains a backup for any widget instance not toggled off.
+ * IMPORTANT: each widget instance (homepage, each collection, AND the product-page
+ * related-products section) has its OWN toggle — verify ALL are set to OFF, or the
+ * un-toggled widget will FOUC (render then CSS-hide) and the price monitor will log
+ * transient FOUC findings for it.
  *
  * TO GATE A NEW INSTANT SITE ELEMENT:
  *   1. Identify the CSS class (chrome-devtools → inspect the live element).
