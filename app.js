@@ -554,6 +554,13 @@ function updateWholesaleHeaderLink(isLoggedIn) {
  * = HIDE). setWholesaleConfig(true) toggles to SHOW for wholesale users.
  */
 function initializeWholesalePriceVisibility() {
+  // Cached wholesale price-visibility state (null = unknown / not yet resolved).
+  // Once the customer's wholesale status is determined, OnPageLoaded applies this
+  // cached state directly instead of blanket-hiding — fixing the hide→reveal race
+  // that re-hid prices for wholesale users on SPA redraws (the "price flashes then
+  // hides" symptom).
+  let lastKnownShowPrices = null;
+
   // Helper: inject CSS to hide prices, buy buttons, and price filter widget
   function injectWholesaleHidingCSS() {
     if (document.getElementById("wholesale-hide-css")) return;
@@ -825,6 +832,7 @@ function initializeWholesalePriceVisibility() {
       // Update wholesale header login link visibility
       updateWholesaleHeaderLink(isLoggedIn);
 
+      lastKnownShowPrices = showPrices; // cache so OnPageLoaded can apply it directly
       applyWholesaleGate(showPrices);
     });
   }
@@ -838,7 +846,10 @@ function initializeWholesalePriceVisibility() {
   // Re-run on SPA navigation/page changes
   Ecwid.OnPageLoaded.add(function () {
     restoreRegistrationBanner(); // Restore banner on SPA navigation
-    applyWholesaleGate(false); // Hide during SPA redraw/customer re-check
+    // Apply the CACHED wholesale state immediately (no blanket re-hide). For a
+    // known-wholesale user this reveals directly on SPA nav — fixing the flash-then-
+    // hide race. Unknown (null) or guest => false (safe default). Poll refreshes below.
+    applyWholesaleGate(lastKnownShowPrices === true);
     pollForCustomerAPI(updateWholesaleVisibility);
     syncAnnouncementBarClass(); // Sync announcement bar body class
   });
