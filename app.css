@@ -1,6 +1,51 @@
 /* Lightspeed eCom Custom App CSS - Wholesale Portal */
 
 /*****************************************************************************/
+/* Wholesale Price/Buy Gating — Render-Blocking Default Hide (app.css layer) */
+/*                                                                           */
+/* In app.css (render-blocking <link> in <head>) so these apply BEFORE the   */
+/* Ecwid engine renders — prices hidden from the FIRST paint (no guest FOUC).*/
+/* Scoped under html:not(.wr-wholesale): the gate (app.js applyWholesaleGate)*/
+/* adds .wr-wholesale to <html> for confirmed wholesale users (rules don't   */
+/* apply → revealed). Fail-closed: if JS fails, .wr-wholesale is never added */
+/* → prices stay hidden for everyone. KEEP IN SYNC with WHOLESALE_HIDE_CSS in */
+/* app.js (the backup injected <style>).                                     */
+/*****************************************************************************/
+html:not(.wr-wholesale) .details-product-purchase__controls,
+html:not(.wr-wholesale) .product-details__product-price-row,
+html:not(.wr-wholesale) .product-details__product-price-row [itemprop="price"],
+html:not(.wr-wholesale) .product-details__product-price-row .product-details__product-price,
+html:not(.wr-wholesale) .product-details__product-price-row .details-product-price__value,
+html:not(.wr-wholesale) .product-details__product-price,
+html:not(.wr-wholesale) .product-details__product-price.ec-price-item,
+html:not(.wr-wholesale) .details-product-price__value,
+html:not(.wr-wholesale) .details-product-price__value.ec-price-item,
+html:not(.wr-wholesale) .details-product-price__value.ec-price-item.notranslate,
+html:not(.wr-wholesale) .ec-filter--price,
+html:not(.wr-wholesale) .ecwid-productBrowser-price,
+html:not(.wr-wholesale) .ecwid-price-value,
+html:not(.wr-wholesale) .ecwid-btn--add-to-cart,
+html:not(.wr-wholesale) .ecwid-add-to-cart-button-container,
+html:not(.wr-wholesale) .product-card-buy-icon,
+html:not(.wr-wholesale) .ec-filter__item--price,
+html:not(.wr-wholesale) .ec-price-filter,
+html:not(.wr-wholesale) .ec-filter__item[data-filter="price"],
+html:not(.wr-wholesale) .ec-filter__item--price-range,
+html:not(.wr-wholesale) .ec-filter__item--price-slider,
+html:not(.wr-wholesale) .ec-filter__item--price input,
+html:not(.wr-wholesale) .ec-filter__item--price label,
+html:not(.wr-wholesale) .ec-filter__item--price .ec-filter__item-content,
+html:not(.wr-wholesale) .ec-filter__item--price .ec-filter__item-title,
+html:not(.wr-wholesale) .ins-tile__product-price,
+html:not(.wr-wholesale) .ins-tile__product-current-price,
+html:not(.wr-wholesale) .ins-tile__product-old-price,
+html:not(.wr-wholesale) .ins-tile__product-compare-at-price,
+html:not(.wr-wholesale) .details-product-purchase__place,
+html:not(.wr-wholesale) .ins-tile__product-card .ins-control--button {
+  display: none !important;
+}
+
+/*****************************************************************************/
 /* Misc Global Fixes                                                         */
 /*****************************************************************************/
 

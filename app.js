@@ -786,9 +786,15 @@ function initializeWholesalePriceVisibility() {
 
   // Helper: apply the safe default or reveal prices for confirmed wholesale users
   function applyWholesaleGate(showPrices) {
+    var htmlEl = document.documentElement;
     if (showPrices) {
+      // Add .wr-wholesale FIRST (disables the render-blocking app.css scoped hide),
+      // BEFORE removing the backup #wholesale-hide-css — avoids an unprotected frame.
+      htmlEl.classList.add("wr-wholesale");
       stopWholesalePriceScrubber();
     } else {
+      // Remove .wr-wholesale (re-enables the app.css scoped hide) + backup CSS + scrubber.
+      htmlEl.classList.remove("wr-wholesale");
       injectWholesaleHidingCSS();
       startWholesalePriceScrubber();
     }
