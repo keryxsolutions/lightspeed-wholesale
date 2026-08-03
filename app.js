@@ -17,6 +17,54 @@ const REG_SERVER_URL =
   window.WHOLESALE_REG_SERVER_URL ||
   "https://ecwid-registration.keryx-solutions.workers.dev";
 
+// Price/buy-button hide-CSS. Injected SYNCHRONOUSLY at the top of app.js (Option A) so it
+// lands BEFORE the Ecwid engine renders the widgets — hiding prices from creation (no guest
+// flash, no layout reflow). The same CSS is reused by injectWholesaleHidingCSS() inside
+// OnAPILoaded (idempotent: skips if #wholesale-hide-css already exists from this early inject).
+const WHOLESALE_HIDE_CSS = `
+      .details-product-purchase__controls,
+      .product-details__product-price-row,
+      .product-details__product-price-row [itemprop="price"],
+      .product-details__product-price-row .product-details__product-price,
+      .product-details__product-price-row .details-product-price__value,
+      .product-details__product-price,
+      .product-details__product-price.ec-price-item,
+      .details-product-price__value,
+      .details-product-price__value.ec-price-item,
+      .details-product-price__value.ec-price-item.notranslate,
+      .ec-filter--price,
+      .ecwid-productBrowser-price,
+      .ecwid-price-value,
+      .ecwid-btn--add-to-cart,
+      .ecwid-add-to-cart-button-container,
+      .product-card-buy-icon,
+      .ec-filter__item--price,
+      .ec-price-filter,
+      .ec-filter__item[data-filter="price"],
+      .ec-filter__item--price-range,
+      .ec-filter__item--price-slider,
+      .ec-filter__item--price input,
+      .ec-filter__item--price label,
+      .ec-filter__item--price .ec-filter__item-content,
+      .ec-filter__item--price .ec-filter__item-title,
+      .ins-tile__product-price,
+      .ins-tile__product-current-price,
+      .ins-tile__product-old-price,
+      .ins-tile__product-compare-at-price,
+      .details-product-purchase__place, /* stock availability / "X available items" — hide via CSS for instant (config path is slower) */
+      .ins-tile__product-card .ins-control--button {
+        display: none !important;
+      }
+    `;
+// Early injection — runs as soon as app.js loads (async-in-head, before the Ecwid engine).
+(function earlyWholesaleHide() {
+  if (document.getElementById("wholesale-hide-css")) return;
+  var s = document.createElement("style");
+  s.id = "wholesale-hide-css";
+  s.textContent = WHOLESALE_HIDE_CSS;
+  (document.head || document.documentElement).appendChild(s);
+})();
+
 // Route helpers (supports pathname and hash)
 function isAccountRegisterPath() {
   const p = window.location.pathname || "";
@@ -560,6 +608,7 @@ function initializeWholesalePriceVisibility() {
   // that re-hid prices for wholesale users on SPA redraws (the "price flashes then
   // hides" symptom).
   let lastKnownShowPrices = null;
+  let lastConfigShow = null; // for idempotent refreshConfig (Option D)
 
   // Helper: inject CSS to hide prices, buy buttons, and price filter widget
   function injectWholesaleHidingCSS() {
@@ -602,6 +651,7 @@ function initializeWholesalePriceVisibility() {
       .ins-tile__product-old-price,
       .ins-tile__product-compare-at-price,
       /* Instant Site Product Collection: "Buy Now" buttons on product tiles (guests) */
+      .details-product-purchase__place, /* stock availability / "X available items" — hide via CSS for instant (config path is slower) */
       .ins-tile__product-card .ins-control--button {
         display: none !important;
       }
@@ -722,8 +772,14 @@ function initializeWholesalePriceVisibility() {
       config.product_details_show_wholesale_prices = !!show;
       config.product_details_show_number_of_items_in_stock = !!show;
       config.product_details_show_buy_button = !!show;
-      if (typeof Ecwid.refreshConfig === "function") {
-        Ecwid.refreshConfig();
+      // Idempotent refresh (Option D): only call refreshConfig when the show-state changed,
+      // avoiding redundant re-renders (flash/reflow) on SPA navigations where the state is the
+      // same. Values are always re-set above (handles Ecwid resetting config on SPA redraws).
+      if (show !== lastConfigShow) {
+        lastConfigShow = show;
+        if (typeof Ecwid.refreshConfig === "function") {
+          Ecwid.refreshConfig();
+        }
       }
     }
   }
